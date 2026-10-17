@@ -54,7 +54,7 @@ pub fn render_provider_modal(f: &mut Frame, area: Rect, state: &ProviderSelectMo
         .map(|s| s.label.as_str())
         .unwrap_or("Auto Match");
 
-    // 1. Top Bar (Kunai: 🦊 Kunai • [Tracks] series • Videasy->Rivestream • 🔔 1 | ● ready)
+    // 1. Top Bar: 🐱 KittyMov • [Tracks] series • Provider • 🔔 1 | ● ready
     let top_left = Line::from(vec![
         Span::styled(
             " 🐱 KittyMov ",

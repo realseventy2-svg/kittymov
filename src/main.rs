@@ -42,6 +42,9 @@ struct Cli {
 
     #[arg(long, help = "Run environment diagnostics and dependency health check")]
     doctor: bool,
+
+    #[arg(long, help = "Launch the beginner-friendly initial setup wizard")]
+    setup: bool,
 }
 
 #[tokio::main]
@@ -64,6 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let cli = Cli::parse();
+    let is_first_run = crate::config::is_fresh_install();
     let cfg = load_config();
 
     // Fast-path: --doctor flag
@@ -127,6 +131,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut terminal = Terminal::new(backend)?;
 
     let mut app = App::new(cfg, db);
+    if is_first_run || cli.setup {
+        app.open_setup_wizard();
+    }
     app.init().await;
 
     let initial_query = cli.search.or(cli.query);
@@ -188,6 +195,56 @@ async fn handle_key_event(
     code: KeyCode,
     _modifiers: crossterm::event::KeyModifiers,
 ) {
+    // -2. If Initial Setup Wizard is active
+    if app.setup_wizard.is_some() {
+        match code {
+            KeyCode::Esc | KeyCode::Char('q') => {
+                app.setup_wizard_cancel();
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                app.setup_wizard_prev_item();
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                app.setup_wizard_next_item();
+            }
+            KeyCode::Left | KeyCode::Char('h') => {
+                app.setup_wizard_change_value(false);
+            }
+            KeyCode::Right | KeyCode::Char('l') => {
+                app.setup_wizard_change_value(true);
+            }
+            KeyCode::Tab => {
+                app.setup_wizard_next_step();
+            }
+            KeyCode::BackTab => {
+                app.setup_wizard_prev_step();
+            }
+            KeyCode::Char('1') => {
+                app.setup_wizard_set_step(crate::app::SetupStep::Welcome);
+            }
+            KeyCode::Char('2') => {
+                app.setup_wizard_set_step(crate::app::SetupStep::Playback);
+            }
+            KeyCode::Char('3') => {
+                app.setup_wizard_set_step(crate::app::SetupStep::Subtitles);
+            }
+            KeyCode::Char('4') => {
+                app.setup_wizard_set_step(crate::app::SetupStep::Providers);
+            }
+            KeyCode::Char('5') => {
+                app.setup_wizard_set_step(crate::app::SetupStep::Appearance);
+            }
+            KeyCode::Char('6') => {
+                app.setup_wizard_set_step(crate::app::SetupStep::Complete);
+            }
+            KeyCode::Enter | KeyCode::Char(' ') => {
+                app.setup_wizard_confirm();
+            }
+            _ => {}
+        }
+        return;
+    }
+
     // -1. If Playback Loading / Bootstrap screen is active
     if app.playback_loading.is_some() {
         match code {

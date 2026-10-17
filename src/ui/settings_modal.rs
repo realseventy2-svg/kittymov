@@ -744,6 +744,11 @@ fn get_category_rows(
                 SettingWidget::Action("Reset All to Factory Defaults".to_string()),
                 "Reset all configuration settings to original defaults without deleting watch history.",
             ),
+            (
+                "Initial Setup Wizard",
+                SettingWidget::Action("Launch Initial Setup Wizard".to_string()),
+                "Re-launch the beginner-friendly step-by-step setup wizard to reconfigure preferences.",
+            ),
         ],
     }
 }

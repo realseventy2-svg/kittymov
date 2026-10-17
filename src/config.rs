@@ -192,6 +192,25 @@ pub fn get_state_dir() -> PathBuf {
     dir
 }
 
+pub fn is_fresh_install() -> bool {
+    let cfg_path = get_config_dir().join("config.json");
+    if !cfg_path.exists() {
+        return true;
+    }
+    if let Ok(meta) = std::fs::metadata(&cfg_path) {
+        if meta.len() == 0 {
+            return true;
+        }
+    }
+    if let Ok(content) = std::fs::read_to_string(&cfg_path) {
+        let trimmed = content.trim();
+        if trimmed.is_empty() || trimmed == "{}" {
+            return true;
+        }
+    }
+    false
+}
+
 pub fn load_config() -> Config {
     let cfg_path = get_config_dir().join("config.json");
     if cfg_path.exists() {

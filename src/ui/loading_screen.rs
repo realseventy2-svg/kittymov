@@ -104,7 +104,7 @@ pub fn render_loading_screen(f: &mut Frame, area: Rect, state: &PlaybackLoadingS
         .margin(1)
         .split(cols[0]);
 
-    // Resolving header with flower symbol (Kunai style: ✿ ✿ ✿ Resolving via ...)
+    // Resolving header with flower symbol: ✿ ✿ ✿ Resolving via ...
     let resolving_title = Line::from(vec![
         Span::styled(
             "✿ ✿ ✿  ",
@@ -176,7 +176,7 @@ pub fn render_loading_screen(f: &mut Frame, area: Rect, state: &PlaybackLoadingS
     }
     f.render_widget(Paragraph::new(step_lines), left_layout[1]);
 
-    // Session status line (Kunai style: session autoskip on • autoplay on • sub)
+    // Session status line: session autoskip on • autoplay on • sub
     let autoskip_str = if state.session_autoskip { "on" } else { "off" };
     let autoplay_str = if state.session_autoplay { "on" } else { "off" };
     let mode_str = state.session_audio_mode.to_lowercase();

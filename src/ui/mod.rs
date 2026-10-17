@@ -7,6 +7,7 @@ pub mod metadata_panel;
 pub mod poster;
 pub mod provider_modal;
 pub mod settings_modal;
+pub mod setup_wizard;
 pub mod subtitle_modal;
 pub mod theme;
 
@@ -21,6 +22,7 @@ use self::loading_screen::render_loading_screen;
 use self::metadata_panel::render_metadata_panel;
 use self::provider_modal::render_provider_modal;
 use self::settings_modal::render_settings_modal;
+use self::setup_wizard::render_setup_wizard;
 use self::subtitle_modal::render_subtitle_modal;
 use self::theme::Theme;
 use crate::app::App;
@@ -28,13 +30,19 @@ use crate::app::App;
 pub fn render_ui(f: &mut Frame, app: &App) {
     let size = f.area();
 
-    // 0. If Playback Loading / Bootstrap Screen is active, render full-screen cinematic loader (Kunai style)!
+    // -1. If Initial Setup Wizard is active (first run or manual), render full-screen onboarding wizard
+    if let Some(ref wizard) = app.setup_wizard {
+        render_setup_wizard(f, size, wizard, &app.cfg);
+        return;
+    }
+
+    // 0. If Playback Loading / Bootstrap Screen is active, render full-screen cinematic loader
     if let Some(ref loading_state) = app.playback_loading {
         render_loading_screen(f, size, loading_state);
         return;
     }
 
-    // 0.5 If Tracks / Provider Selector Screen is active, render full-screen tracks view (Kunai style)!
+    // 0.5 If Tracks / Provider Selector Screen is active, render full-screen tracks view
     if let Some(ref p_modal) = app.provider_modal {
         render_provider_modal(f, size, p_modal);
         return;
