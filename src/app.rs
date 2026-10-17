@@ -34,8 +34,341 @@ pub struct ProviderSelectModalState {
     pub selected_idx: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsPane {
+    Categories,
+    Content,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsCategory {
+    General,
+    Playback,
+    Providers,
+    Appearance,
+    Storage,
+}
+
+impl SettingsCategory {
+    pub const ALL: [SettingsCategory; 5] = [
+        SettingsCategory::General,
+        SettingsCategory::Playback,
+        SettingsCategory::Providers,
+        SettingsCategory::Appearance,
+        SettingsCategory::Storage,
+    ];
+
+    pub fn title(&self) -> &'static str {
+        match self {
+            SettingsCategory::General => "General",
+            SettingsCategory::Playback => "Playback",
+            SettingsCategory::Providers => "Providers",
+            SettingsCategory::Appearance => "Appearance & UI",
+            SettingsCategory::Storage => "Storage & Advanced",
+        }
+    }
+
+    pub fn icon(&self) -> &'static str {
+        match self {
+            SettingsCategory::General => "⚙",
+            SettingsCategory::Playback => "▶",
+            SettingsCategory::Providers => "🌐",
+            SettingsCategory::Appearance => "🎨",
+            SettingsCategory::Storage => "💾",
+        }
+    }
+
+    pub fn description(&self) -> &'static str {
+        match self {
+            SettingsCategory::General => "Startup behavior, default tab, and player engine",
+            SettingsCategory::Playback => "Audio mode, preferred languages, and video decoding",
+            SettingsCategory::Providers => "Provider priority order and subtitle augmentation",
+            SettingsCategory::Appearance => "Visual theme palette and poster art render mode",
+            SettingsCategory::Storage => "Cache size, watch history database, and factory reset",
+        }
+    }
+
+    pub fn item_count(&self) -> usize {
+        match self {
+            SettingsCategory::General => 4,
+            SettingsCategory::Playback => 5,
+            SettingsCategory::Providers => 3,
+            SettingsCategory::Appearance => 3,
+            SettingsCategory::Storage => 4,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SettingsConfirmation {
+    ClearPosterCache,
+    ClearWatchHistory,
+    ResetDefaults,
+}
+
+#[derive(Debug, Clone)]
 pub struct SettingsModalState {
-    pub selected_idx: usize,
+    pub active_pane: SettingsPane,
+    pub category_idx: usize,
+    pub item_idx: usize,
+    pub search_query: String,
+    pub is_searching: bool,
+    pub confirmation: Option<SettingsConfirmation>,
+    pub feedback_message: Option<String>,
+}
+
+impl SettingsModalState {
+    pub fn current_category(&self) -> SettingsCategory {
+        SettingsCategory::ALL[self.category_idx.min(SettingsCategory::ALL.len() - 1)]
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingMatch {
+    pub category: SettingsCategory,
+    pub category_idx: usize,
+    pub item_idx: usize,
+    pub label: &'static str,
+    pub value_str: String,
+    pub description: &'static str,
+}
+
+pub fn lang_name(code: &str) -> &'static str {
+    match code.to_lowercase().as_str() {
+        "eng" => "English",
+        "jpn" => "Japanese",
+        "spa" => "Spanish",
+        "fra" => "French",
+        "deu" => "German",
+        "ita" => "Italian",
+        "por" => "Portuguese",
+        "rus" => "Russian",
+        "kor" => "Korean",
+        "zho" => "Chinese",
+        _ => "Custom",
+    }
+}
+
+pub fn format_bytes(bytes: u64) -> String {
+    if bytes < 1024 {
+        format!("{} B", bytes)
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else if bytes < 1024 * 1024 * 1024 {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    } else {
+        format!("{:.2} GB", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
+    }
+}
+
+pub fn get_all_settings_metadata(cfg: &Config) -> Vec<SettingMatch> {
+    vec![
+        // General (0..4)
+        SettingMatch {
+            category: SettingsCategory::General,
+            category_idx: 0,
+            item_idx: 0,
+            label: "Default Startup Tab",
+            value_str: match cfg.default_tab.to_lowercase().as_str() {
+                "series" | "tv" => "Series".to_string(),
+                "history" => "History".to_string(),
+                "bookmarks" => "Bookmarks".to_string(),
+                _ => "Movies".to_string(),
+            },
+            description: "Default landing view presented on kitty-mov launch.",
+        },
+        SettingMatch {
+            category: SettingsCategory::General,
+            category_idx: 0,
+            item_idx: 1,
+            label: "Resume on Startup",
+            value_str: if cfg.resume_on_startup { "ON".to_string() } else { "OFF".to_string() },
+            description: "Automatically resume playback of your most recently watched title on launch.",
+        },
+        SettingMatch {
+            category: SettingsCategory::General,
+            category_idx: 0,
+            item_idx: 2,
+            label: "Player Engine",
+            value_str: "mpv (External High-Performance Player)".to_string(),
+            description: "Hardware-accelerated player engine powering video playback and subtitle sync.",
+        },
+        SettingMatch {
+            category: SettingsCategory::General,
+            category_idx: 0,
+            item_idx: 3,
+            label: "TMDB Metadata API",
+            value_str: "Connected (v3 API Active)".to_string(),
+            description: "Global metadata provider supplying artwork, cast details, episode titles, and summaries.",
+        },
+
+        // Playback (0..5)
+        SettingMatch {
+            category: SettingsCategory::Playback,
+            category_idx: 1,
+            item_idx: 0,
+            label: "Audio Preference Mode",
+            value_str: match cfg.audio_mode.to_lowercase().as_str() {
+                "sub" => "Sub (Original Audio + Subtitles)".to_string(),
+                _ => "Dub (English / Native Audio Track)".to_string(),
+            },
+            description: "Dub selects localized English audio; Sub selects original foreign audio with subtitles.",
+        },
+        SettingMatch {
+            category: SettingsCategory::Playback,
+            category_idx: 1,
+            item_idx: 1,
+            label: "Preferred Audio Language",
+            value_str: format!("{} ({})", cfg.audio_language, lang_name(&cfg.audio_language)),
+            description: "Default voice language requested from streaming providers and selected in mpv.",
+        },
+        SettingMatch {
+            category: SettingsCategory::Playback,
+            category_idx: 1,
+            item_idx: 2,
+            label: "Preferred Subtitle Language",
+            value_str: format!("{} ({})", cfg.sub_language, lang_name(&cfg.sub_language)),
+            description: "Default subtitle language automatically loaded and rendered on screen.",
+        },
+        SettingMatch {
+            category: SettingsCategory::Playback,
+            category_idx: 1,
+            item_idx: 3,
+            label: "Auto-Play Next Episode",
+            value_str: if cfg.auto_play_next { "ON (Seamless background prefetch)".to_string() } else { "OFF".to_string() },
+            description: "Seamlessly start the next episode upon reaching the conclusion of current episode.",
+        },
+        SettingMatch {
+            category: SettingsCategory::Playback,
+            category_idx: 1,
+            item_idx: 4,
+            label: "Hardware Decoding (hwdec)",
+            value_str: match cfg.hwdec.as_str() {
+                "auto" => "auto (MPV auto detection)".to_string(),
+                "auto-safe" => "auto-safe (Safe hardware decoder)".to_string(),
+                "vaapi" => "vaapi (Intel / AMD Linux GPU)".to_string(),
+                "nvdec" => "nvdec (NVIDIA GPU)".to_string(),
+                "videotoolbox" => "videotoolbox (Apple Silicon / macOS)".to_string(),
+                "no" => "no (Software CPU decoding)".to_string(),
+                other => other.to_string(),
+            },
+            description: "GPU video acceleration profile passed to mpv for efficient, stutter-free playback.",
+        },
+
+        // Providers (0..3)
+        SettingMatch {
+            category: SettingsCategory::Providers,
+            category_idx: 2,
+            item_idx: 0,
+            label: "Preferred Provider",
+            value_str: match cfg.preferred_provider.to_lowercase().as_str() {
+                "vixsrc" => "VixSrc First (Ultra-Fast 1080p CDN)".to_string(),
+                "lookmovie" => "LookMovie First (Fallback CDN)".to_string(),
+                _ => "Auto Fallback (VixSrc → LookMovie)".to_string(),
+            },
+            description: "Priority order for streaming servers. Auto Fallback tries VixSrc first, then LookMovie.",
+        },
+        SettingMatch {
+            category: SettingsCategory::Providers,
+            category_idx: 2,
+            item_idx: 1,
+            label: "Subtitle Augmentation",
+            value_str: if cfg.subtitle_augmentation { "ON (Auto-pull from LookMovie)".to_string() } else { "OFF".to_string() },
+            description: "When enabled, queries LookMovie subtitle tracks if primary stream lacks requested subtitles.",
+        },
+        SettingMatch {
+            category: SettingsCategory::Providers,
+            category_idx: 2,
+            item_idx: 2,
+            label: "Network Timeout",
+            value_str: "10 seconds (Auto Failover)".to_string(),
+            description: "Maximum duration kitty-mov waits for a provider response before failing over.",
+        },
+
+        // Appearance (0..3)
+        SettingMatch {
+            category: SettingsCategory::Appearance,
+            category_idx: 3,
+            item_idx: 0,
+            label: "Color Theme Palette",
+            value_str: match cfg.theme_name.as_str() {
+                "amber" => "Warm Amber (Cinematic)".to_string(),
+                "rose" => "Neon Rose (Cyberpunk)".to_string(),
+                "emerald" => "Emerald Matrix (Green)".to_string(),
+                _ => "Cyber Cyan (Default Glow)".to_string(),
+            },
+            description: "Color palette accents for UI borders, highlights, badges, and focus indicators.",
+        },
+        SettingMatch {
+            category: SettingsCategory::Appearance,
+            category_idx: 3,
+            item_idx: 1,
+            label: "Poster Art Render Mode",
+            value_str: match cfg.poster_render_mode.as_str() {
+                "off" => "Off (Text-Only Mode)".to_string(),
+                _ => "Half-Block 24-bit ANSI (High Quality)".to_string(),
+            },
+            description: "Render high-resolution colored poster previews using Unicode half-blocks or text-only fallback.",
+        },
+        SettingMatch {
+            category: SettingsCategory::Appearance,
+            category_idx: 3,
+            item_idx: 2,
+            label: "Interface Layout",
+            value_str: "Spacious Split-Pane (Terminal Adaptive)".to_string(),
+            description: "Dual-pane layout with persistent navigation and contextual inspector.",
+        },
+
+        // Storage (0..4)
+        SettingMatch {
+            category: SettingsCategory::Storage,
+            category_idx: 4,
+            item_idx: 0,
+            label: "Configuration File",
+            value_str: crate::config::get_config_dir().join("config.json").to_string_lossy().to_string(),
+            description: "Persistent JSON configuration location on your system.",
+        },
+        SettingMatch {
+            category: SettingsCategory::Storage,
+            category_idx: 4,
+            item_idx: 1,
+            label: "Poster Artwork Cache",
+            value_str: "[ Clear Poster Cache ]".to_string(),
+            description: "Delete locally cached movie and TV show poster thumbnails to reclaim disk space.",
+        },
+        SettingMatch {
+            category: SettingsCategory::Storage,
+            category_idx: 4,
+            item_idx: 2,
+            label: "Watch History Database",
+            value_str: "[ Clear Watch History ]".to_string(),
+            description: "Clear all playback timestamps, progress records, and watch history from SQLite.",
+        },
+        SettingMatch {
+            category: SettingsCategory::Storage,
+            category_idx: 4,
+            item_idx: 3,
+            label: "Factory Reset",
+            value_str: "[ Reset All to Factory Defaults ]".to_string(),
+            description: "Restore all configuration options to their original defaults without deleting history.",
+        },
+    ]
+}
+
+pub fn search_settings_matches(cfg: &Config, query: &str) -> Vec<SettingMatch> {
+    let q = query.trim().to_lowercase();
+    if q.is_empty() {
+        return Vec::new();
+    }
+    let all = get_all_settings_metadata(cfg);
+    all.into_iter()
+        .filter(|m| {
+            m.label.to_lowercase().contains(&q)
+                || m.category.title().to_lowercase().contains(&q)
+                || m.description.to_lowercase().contains(&q)
+                || m.value_str.to_lowercase().contains(&q)
+        })
+        .collect()
 }
 
 pub struct EpisodeModalState {
@@ -93,7 +426,45 @@ impl App {
     }
 
     pub async fn init(&mut self) {
-        self.load_tab(ActiveTab::Movies).await;
+        if self.cfg.resume_on_startup {
+            if let Ok(Some(latest)) = self.db.get_latest_watch() {
+                self.status_message = format!("Resuming {}...", latest.title);
+                if latest.media_type == "tv" {
+                    self.play_tv_series(
+                        latest.tmdb_id,
+                        &latest.title,
+                        &latest.year,
+                        &latest.poster_path,
+                        latest.season.unwrap_or(1),
+                        latest.episode.unwrap_or(1),
+                    ).await;
+                    return;
+                } else {
+                    self.play_movie(crate::metadata::MediaItem {
+                        tmdb_id: latest.tmdb_id,
+                        media_type: latest.media_type,
+                        title: latest.title,
+                        year: latest.year,
+                        rating: 0.0,
+                        poster_path: latest.poster_path,
+                        overview: format!("Last watched: {}", latest.last_watched),
+                        genres: "Movie".to_string(),
+                        duration_str: format!("{}m", latest.progress_seconds / 60),
+                        status: "History".to_string(),
+                        episodes_count: None,
+                    }).await;
+                    return;
+                }
+            }
+        }
+
+        let tab = match self.cfg.default_tab.to_lowercase().as_str() {
+            "series" | "tv" => ActiveTab::Series,
+            "history" => ActiveTab::History,
+            "bookmarks" => ActiveTab::Bookmarks,
+            _ => ActiveTab::Movies,
+        };
+        self.load_tab(tab).await;
     }
 
     pub async fn load_tab(&mut self, tab: ActiveTab) {
@@ -309,8 +680,17 @@ impl App {
         if self.settings_modal.is_some() {
             self.save_settings();
             self.settings_modal = None;
+            self.status_message = "Settings saved".to_string();
         } else {
-            self.settings_modal = Some(SettingsModalState { selected_idx: 0 });
+            self.settings_modal = Some(SettingsModalState {
+                active_pane: SettingsPane::Categories,
+                category_idx: 0,
+                item_idx: 0,
+                search_query: String::new(),
+                is_searching: false,
+                confirmation: None,
+                feedback_message: None,
+            });
             self.status_message = "Settings Menu Opened".to_string();
         }
     }
@@ -318,62 +698,251 @@ impl App {
     pub fn save_settings(&mut self) {
         let _ = self.cfg.save();
         self.providers = Arc::new(ProviderManager::with_preference(&self.cfg.preferred_provider));
-        self.status_message = "Settings saved".to_string();
+    }
+
+    pub fn settings_switch_pane(&mut self) {
+        if let Some(ref mut s) = self.settings_modal {
+            s.feedback_message = None;
+            s.active_pane = match s.active_pane {
+                SettingsPane::Categories => SettingsPane::Content,
+                SettingsPane::Content => SettingsPane::Categories,
+            };
+        }
     }
 
     pub fn settings_next(&mut self) {
         if let Some(ref mut s) = self.settings_modal {
-            if s.selected_idx + 1 < 6 {
-                s.selected_idx += 1;
-            } else {
-                s.selected_idx = 0;
+            s.feedback_message = None;
+            if s.confirmation.is_some() {
+                return;
+            }
+            if !s.search_query.trim().is_empty() {
+                let matches = search_settings_matches(&self.cfg, &s.search_query);
+                if !matches.is_empty() {
+                    s.item_idx = (s.item_idx + 1) % matches.len();
+                }
+                return;
+            }
+
+            match s.active_pane {
+                SettingsPane::Categories => {
+                    s.category_idx = (s.category_idx + 1) % SettingsCategory::ALL.len();
+                    s.item_idx = 0;
+                }
+                SettingsPane::Content => {
+                    let cat = SettingsCategory::ALL[s.category_idx];
+                    let count = cat.item_count();
+                    if count > 0 {
+                        s.item_idx = (s.item_idx + 1) % count;
+                    }
+                }
             }
         }
     }
 
     pub fn settings_prev(&mut self) {
         if let Some(ref mut s) = self.settings_modal {
-            if s.selected_idx > 0 {
-                s.selected_idx -= 1;
-            } else {
-                s.selected_idx = 5;
+            s.feedback_message = None;
+            if s.confirmation.is_some() {
+                return;
+            }
+            if !s.search_query.trim().is_empty() {
+                let matches = search_settings_matches(&self.cfg, &s.search_query);
+                if !matches.is_empty() {
+                    s.item_idx = (s.item_idx + matches.len() - 1) % matches.len();
+                }
+                return;
+            }
+
+            match s.active_pane {
+                SettingsPane::Categories => {
+                    s.category_idx = (s.category_idx + SettingsCategory::ALL.len() - 1) % SettingsCategory::ALL.len();
+                    s.item_idx = 0;
+                }
+                SettingsPane::Content => {
+                    let cat = SettingsCategory::ALL[s.category_idx];
+                    let count = cat.item_count();
+                    if count > 0 {
+                        s.item_idx = (s.item_idx + count - 1) % count;
+                    }
+                }
             }
         }
     }
 
     pub fn settings_change_value(&mut self, forward: bool) {
-        if let Some(ref s) = self.settings_modal {
-            match s.selected_idx {
-                0 => {
-                    self.cfg.audio_mode = if self.cfg.audio_mode.to_lowercase() == "sub" {
-                        "dub".to_string()
-                    } else {
-                        "sub".to_string()
-                    };
+        if let Some(ref mut s) = self.settings_modal {
+            s.feedback_message = None;
+            if s.confirmation.is_some() {
+                return;
+            }
+            if s.active_pane == SettingsPane::Categories {
+                s.active_pane = SettingsPane::Content;
+                return;
+            }
+
+            if !s.search_query.trim().is_empty() {
+                let matches = search_settings_matches(&self.cfg, &s.search_query);
+                if let Some(m) = matches.get(s.item_idx) {
+                    s.category_idx = m.category_idx;
+                    s.item_idx = m.item_idx;
+                    s.search_query.clear();
+                    s.is_searching = false;
+                    s.active_pane = SettingsPane::Content;
                 }
-                1 => {
-                    let langs = ["eng", "jpn", "spa", "fra", "deu", "ita", "por", "rus", "kor", "zho"];
-                    self.cfg.audio_language = cycle_list(&langs, &self.cfg.audio_language, forward);
-                }
-                2 => {
-                    let langs = ["eng", "spa", "fra", "deu", "ita", "jpn", "por", "rus", "kor", "zho"];
-                    self.cfg.sub_language = cycle_list(&langs, &self.cfg.sub_language, forward);
-                }
-                3 => {
-                    self.cfg.auto_play_next = !self.cfg.auto_play_next;
-                }
-                4 => {
-                    let providers = ["auto", "vixsrc", "lookmovie"];
-                    self.cfg.preferred_provider = cycle_list(&providers, &self.cfg.preferred_provider, forward);
-                }
-                5 => {
-                    let hwdecs = ["auto", "auto-safe", "vaapi", "nvdec", "videotoolbox", "no"];
-                    self.cfg.hwdec = cycle_list(&hwdecs, &self.cfg.hwdec, forward);
-                }
-                _ => {}
+                return;
+            }
+
+            let cat = SettingsCategory::ALL[s.category_idx];
+            match cat {
+                SettingsCategory::General => match s.item_idx {
+                    0 => {
+                        let tabs = ["movies", "series", "history", "bookmarks"];
+                        self.cfg.default_tab = cycle_list(&tabs, &self.cfg.default_tab, forward);
+                    }
+                    1 => {
+                        self.cfg.resume_on_startup = !self.cfg.resume_on_startup;
+                    }
+                    _ => {}
+                },
+                SettingsCategory::Playback => match s.item_idx {
+                    0 => {
+                        self.cfg.audio_mode = if self.cfg.audio_mode.to_lowercase() == "sub" {
+                            "dub".to_string()
+                        } else {
+                            "sub".to_string()
+                        };
+                    }
+                    1 => {
+                        let langs = ["eng", "jpn", "spa", "fra", "deu", "ita", "por", "rus", "kor", "zho"];
+                        self.cfg.audio_language = cycle_list(&langs, &self.cfg.audio_language, forward);
+                    }
+                    2 => {
+                        let langs = ["eng", "spa", "fra", "deu", "ita", "jpn", "por", "rus", "kor", "zho"];
+                        self.cfg.sub_language = cycle_list(&langs, &self.cfg.sub_language, forward);
+                    }
+                    3 => {
+                        self.cfg.auto_play_next = !self.cfg.auto_play_next;
+                    }
+                    4 => {
+                        let hwdecs = ["auto", "auto-safe", "vaapi", "nvdec", "videotoolbox", "no"];
+                        self.cfg.hwdec = cycle_list(&hwdecs, &self.cfg.hwdec, forward);
+                    }
+                    _ => {}
+                },
+                SettingsCategory::Providers => match s.item_idx {
+                    0 => {
+                        let providers = ["auto", "vixsrc", "lookmovie"];
+                        self.cfg.preferred_provider = cycle_list(&providers, &self.cfg.preferred_provider, forward);
+                    }
+                    1 => {
+                        self.cfg.subtitle_augmentation = !self.cfg.subtitle_augmentation;
+                    }
+                    _ => {}
+                },
+                SettingsCategory::Appearance => match s.item_idx {
+                    0 => {
+                        let themes = ["cyber", "amber", "rose", "emerald"];
+                        self.cfg.theme_name = cycle_list(&themes, &self.cfg.theme_name, forward);
+                    }
+                    1 => {
+                        let modes = ["half-block", "off"];
+                        self.cfg.poster_render_mode = cycle_list(&modes, &self.cfg.poster_render_mode, forward);
+                    }
+                    _ => {}
+                },
+                SettingsCategory::Storage => match s.item_idx {
+                    1 => {
+                        s.confirmation = Some(SettingsConfirmation::ClearPosterCache);
+                    }
+                    2 => {
+                        s.confirmation = Some(SettingsConfirmation::ClearWatchHistory);
+                    }
+                    3 => {
+                        s.confirmation = Some(SettingsConfirmation::ResetDefaults);
+                    }
+                    _ => {}
+                },
             }
             let _ = self.cfg.save();
             self.providers = Arc::new(ProviderManager::with_preference(&self.cfg.preferred_provider));
+        }
+    }
+
+    pub fn settings_execute_confirmation(&mut self) {
+        if let Some(ref mut s) = self.settings_modal {
+            if let Some(ref conf) = s.confirmation.clone() {
+                match conf {
+                    SettingsConfirmation::ClearPosterCache => {
+                        match crate::config::clear_poster_cache() {
+                            Ok(count) => {
+                                s.feedback_message = Some(format!("Poster cache cleared ({} files removed)", count));
+                            }
+                            Err(e) => {
+                                s.feedback_message = Some(format!("Failed to clear cache: {}", e));
+                            }
+                        }
+                    }
+                    SettingsConfirmation::ClearWatchHistory => {
+                        match self.db.clear_history() {
+                            Ok(count) => {
+                                s.feedback_message = Some(format!("Watch history cleared ({} records removed)", count));
+                            }
+                            Err(e) => {
+                                s.feedback_message = Some(format!("Failed to clear history: {}", e));
+                            }
+                        }
+                    }
+                    SettingsConfirmation::ResetDefaults => {
+                        self.cfg.reset_to_defaults();
+                        let _ = self.cfg.save();
+                        self.providers = Arc::new(ProviderManager::with_preference(&self.cfg.preferred_provider));
+                        s.feedback_message = Some("All settings restored to factory defaults".to_string());
+                    }
+                }
+                s.confirmation = None;
+            }
+        }
+    }
+
+    pub fn settings_cancel_confirmation(&mut self) {
+        if let Some(ref mut s) = self.settings_modal {
+            s.confirmation = None;
+            s.feedback_message = Some("Action cancelled".to_string());
+        }
+    }
+
+    pub fn settings_reset_current_category(&mut self) {
+        if let Some(ref mut s) = self.settings_modal {
+            let cat = SettingsCategory::ALL[s.category_idx];
+            match cat {
+                SettingsCategory::General => {
+                    self.cfg.default_tab = "movies".to_string();
+                    self.cfg.resume_on_startup = false;
+                }
+                SettingsCategory::Playback => {
+                    self.cfg.audio_mode = "sub".to_string();
+                    self.cfg.audio_language = "eng".to_string();
+                    self.cfg.sub_language = "eng".to_string();
+                    self.cfg.auto_play_next = true;
+                    self.cfg.hwdec = "auto".to_string();
+                }
+                SettingsCategory::Providers => {
+                    self.cfg.preferred_provider = "auto".to_string();
+                    self.cfg.subtitle_augmentation = true;
+                }
+                SettingsCategory::Appearance => {
+                    self.cfg.theme_name = "cyber".to_string();
+                    self.cfg.poster_render_mode = "half-block".to_string();
+                }
+                SettingsCategory::Storage => {
+                    s.confirmation = Some(SettingsConfirmation::ResetDefaults);
+                    return;
+                }
+            }
+            let _ = self.cfg.save();
+            self.providers = Arc::new(ProviderManager::with_preference(&self.cfg.preferred_provider));
+            s.feedback_message = Some(format!("Reset {} settings to defaults", cat.title()));
         }
     }
 
@@ -798,6 +1367,156 @@ mod tests {
 
         assert_eq!(cycle_list(&langs, "eng", false), "spa");
         assert_eq!(cycle_list(&langs, "spa", false), "jpn");
+    }
+
+    #[test]
+    fn test_settings_categories_and_counts() {
+        assert_eq!(SettingsCategory::ALL.len(), 5);
+        assert_eq!(SettingsCategory::General.item_count(), 4);
+        assert_eq!(SettingsCategory::Playback.item_count(), 5);
+        assert_eq!(SettingsCategory::Providers.item_count(), 3);
+        assert_eq!(SettingsCategory::Appearance.item_count(), 3);
+        assert_eq!(SettingsCategory::Storage.item_count(), 4);
+    }
+
+    #[test]
+    fn test_settings_pane_switching_and_navigation() {
+        let cfg = Config::default();
+        let db = Database::in_memory().unwrap();
+        let mut app = App::new(cfg, db);
+
+        assert!(app.settings_modal.is_none());
+        app.toggle_settings();
+        assert!(app.settings_modal.is_some());
+
+        // Initially on Categories pane
+        let sm = app.settings_modal.as_ref().unwrap();
+        assert_eq!(sm.active_pane, SettingsPane::Categories);
+        assert_eq!(sm.category_idx, 0);
+        assert_eq!(sm.item_idx, 0);
+
+        // Switch pane to Content
+        app.settings_switch_pane();
+        assert_eq!(app.settings_modal.as_ref().unwrap().active_pane, SettingsPane::Content);
+
+        // Switch back to Categories
+        app.settings_switch_pane();
+        assert_eq!(app.settings_modal.as_ref().unwrap().active_pane, SettingsPane::Categories);
+
+        // Category navigation wraps around
+        app.settings_next();
+        assert_eq!(app.settings_modal.as_ref().unwrap().category_idx, 1);
+        app.settings_prev();
+        assert_eq!(app.settings_modal.as_ref().unwrap().category_idx, 0);
+        app.settings_prev();
+        assert_eq!(app.settings_modal.as_ref().unwrap().category_idx, 4);
+
+        // Switch to Content pane and navigate items
+        app.settings_switch_pane();
+        assert_eq!(app.settings_modal.as_ref().unwrap().item_idx, 0);
+        app.settings_next();
+        assert_eq!(app.settings_modal.as_ref().unwrap().item_idx, 1);
+        app.settings_prev();
+        assert_eq!(app.settings_modal.as_ref().unwrap().item_idx, 0);
+        app.settings_prev();
+        assert_eq!(app.settings_modal.as_ref().unwrap().item_idx, 3); // Storage has 4 items (0..3)
+    }
+
+    #[test]
+    fn test_settings_value_changes() {
+        let cfg = Config::default();
+        let db = Database::in_memory().unwrap();
+        let mut app = App::new(cfg, db);
+        app.toggle_settings();
+
+        // General Category (category_idx = 0)
+        app.settings_modal.as_mut().unwrap().active_pane = SettingsPane::Content;
+        app.settings_modal.as_mut().unwrap().item_idx = 0; // Default Tab
+        let initial_tab = app.cfg.default_tab.clone();
+        app.settings_change_value(true);
+        assert_ne!(app.cfg.default_tab, initial_tab);
+
+        app.settings_modal.as_mut().unwrap().item_idx = 1; // Resume on startup
+        assert_eq!(app.cfg.resume_on_startup, false);
+        app.settings_change_value(true);
+        assert_eq!(app.cfg.resume_on_startup, true);
+
+        // Playback Category (category_idx = 1)
+        app.settings_modal.as_mut().unwrap().category_idx = 1;
+        app.settings_modal.as_mut().unwrap().item_idx = 0; // Audio mode
+        let initial_mode = app.cfg.audio_mode.clone();
+        app.settings_change_value(true);
+        assert_ne!(app.cfg.audio_mode, initial_mode);
+
+        app.settings_modal.as_mut().unwrap().item_idx = 3; // Auto-play next
+        let initial_auto = app.cfg.auto_play_next;
+        app.settings_change_value(true);
+        assert_eq!(app.cfg.auto_play_next, !initial_auto);
+    }
+
+    #[test]
+    fn test_settings_category_reset() {
+        let mut cfg = Config::default();
+        cfg.default_tab = "history".to_string();
+        cfg.resume_on_startup = true;
+
+        let db = Database::in_memory().unwrap();
+        let mut app = App::new(cfg, db);
+        app.toggle_settings();
+
+        // Reset General Category
+        app.settings_modal.as_mut().unwrap().category_idx = 0;
+        app.settings_reset_current_category();
+
+        assert_eq!(app.cfg.default_tab, "movies");
+        assert_eq!(app.cfg.resume_on_startup, false);
+        assert!(app.settings_modal.as_ref().unwrap().feedback_message.is_some());
+    }
+
+    #[test]
+    fn test_settings_search_filtering() {
+        let cfg = Config::default();
+
+        let sub_matches = search_settings_matches(&cfg, "sub");
+        assert!(!sub_matches.is_empty());
+        assert!(sub_matches.iter().any(|m| m.label.to_lowercase().contains("subtitle")));
+
+        let theme_matches = search_settings_matches(&cfg, "theme");
+        assert!(!theme_matches.is_empty());
+        assert_eq!(theme_matches[0].category, SettingsCategory::Appearance);
+
+        let empty_matches = search_settings_matches(&cfg, "nonexistentquery12345");
+        assert!(empty_matches.is_empty());
+    }
+
+    #[test]
+    fn test_settings_confirmation_workflow() {
+        let cfg = Config::default();
+        let db = Database::in_memory().unwrap();
+        let mut app = App::new(cfg, db);
+        app.toggle_settings();
+
+        // Go to Storage -> Reset Defaults
+        app.settings_modal.as_mut().unwrap().category_idx = 4;
+        app.settings_modal.as_mut().unwrap().active_pane = SettingsPane::Content;
+        app.settings_modal.as_mut().unwrap().item_idx = 3; // Reset Defaults action
+
+        app.settings_change_value(true);
+        assert_eq!(
+            app.settings_modal.as_ref().unwrap().confirmation,
+            Some(SettingsConfirmation::ResetDefaults)
+        );
+
+        // Cancel confirmation
+        app.settings_cancel_confirmation();
+        assert_eq!(app.settings_modal.as_ref().unwrap().confirmation, None);
+
+        // Trigger again and execute
+        app.settings_change_value(true);
+        assert!(app.settings_modal.as_ref().unwrap().confirmation.is_some());
+        app.settings_execute_confirmation();
+        assert_eq!(app.settings_modal.as_ref().unwrap().confirmation, None);
+        assert!(app.settings_modal.as_ref().unwrap().feedback_message.is_some());
     }
 }
 

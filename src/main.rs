@@ -138,10 +138,108 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::event::KeyModifiers) {
     // 1. If Settings Modal is open
-    if app.settings_modal.is_some() {
+    if let Some(ref s) = app.settings_modal.clone() {
+        // A. If confirmation dialog is active
+        if s.confirmation.is_some() {
+            match code {
+                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+                    app.settings_execute_confirmation();
+                }
+                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                    app.settings_cancel_confirmation();
+                }
+                _ => {}
+            }
+            return;
+        }
+
+        // B. If in search input mode
+        if s.is_searching {
+            match code {
+                KeyCode::Char(c) => {
+                    if let Some(ref mut sm) = app.settings_modal {
+                        sm.search_query.push(c);
+                        sm.item_idx = 0;
+                    }
+                }
+                KeyCode::Backspace => {
+                    if let Some(ref mut sm) = app.settings_modal {
+                        sm.search_query.pop();
+                        sm.item_idx = 0;
+                    }
+                }
+                KeyCode::Up => {
+                    app.settings_prev();
+                }
+                KeyCode::Down => {
+                    app.settings_next();
+                }
+                KeyCode::Enter => {
+                    app.settings_change_value(true);
+                }
+                KeyCode::Esc => {
+                    if let Some(ref mut sm) = app.settings_modal {
+                        if !sm.search_query.is_empty() {
+                            sm.search_query.clear();
+                        } else {
+                            sm.is_searching = false;
+                        }
+                    }
+                }
+                _ => {}
+            }
+            return;
+        }
+
+        // C. Normal Settings Navigation
         match code {
-            KeyCode::Esc | KeyCode::Char('S') => {
+            KeyCode::Esc => {
+                if let Some(ref mut sm) = app.settings_modal {
+                    if !sm.search_query.is_empty() {
+                        sm.search_query.clear();
+                    } else if sm.active_pane == crate::app::SettingsPane::Content {
+                        sm.active_pane = crate::app::SettingsPane::Categories;
+                    } else {
+                        app.toggle_settings();
+                    }
+                }
+            }
+            KeyCode::Char('S') => {
                 app.toggle_settings();
+            }
+            KeyCode::Tab | KeyCode::BackTab => {
+                app.settings_switch_pane();
+            }
+            KeyCode::Char('/') => {
+                if let Some(ref mut sm) = app.settings_modal {
+                    sm.is_searching = true;
+                }
+            }
+            KeyCode::Char('r') => {
+                app.settings_reset_current_category();
+            }
+            KeyCode::Char('?') => {
+                if let Some(ref mut sm) = app.settings_modal {
+                    sm.feedback_message = Some("Keys: Tab switch pane, ↑/↓ navigate, ←/→/Space change, r reset, / search, Esc close".to_string());
+                }
+            }
+            KeyCode::Home => {
+                if let Some(ref mut sm) = app.settings_modal {
+                    sm.item_idx = 0;
+                }
+            }
+            KeyCode::End => {
+                if let Some(ref mut sm) = app.settings_modal {
+                    match sm.active_pane {
+                        crate::app::SettingsPane::Categories => {
+                            sm.category_idx = crate::app::SettingsCategory::ALL.len().saturating_sub(1);
+                        }
+                        crate::app::SettingsPane::Content => {
+                            let cat = sm.current_category();
+                            sm.item_idx = cat.item_count().saturating_sub(1);
+                        }
+                    }
+                }
             }
             KeyCode::Up | KeyCode::Char('k') => {
                 app.settings_prev();
@@ -150,9 +248,22 @@ async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::e
                 app.settings_next();
             }
             KeyCode::Left | KeyCode::Char('h') => {
-                app.settings_change_value(false);
+                if let Some(ref sm) = app.settings_modal {
+                    if sm.active_pane == crate::app::SettingsPane::Content {
+                        app.settings_change_value(false);
+                    }
+                }
             }
-            KeyCode::Right | KeyCode::Char('l') | KeyCode::Char(' ') | KeyCode::Enter => {
+            KeyCode::Right | KeyCode::Char('l') => {
+                if let Some(ref mut sm) = app.settings_modal {
+                    if sm.active_pane == crate::app::SettingsPane::Categories {
+                        sm.active_pane = crate::app::SettingsPane::Content;
+                    } else {
+                        app.settings_change_value(true);
+                    }
+                }
+            }
+            KeyCode::Char(' ') | KeyCode::Enter => {
                 app.settings_change_value(true);
             }
             _ => {}

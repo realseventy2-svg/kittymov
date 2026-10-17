@@ -113,11 +113,15 @@ pub fn render_ui(f: &mut Frame, app: &App) {
 
     // If Settings modal is active, overlay it
     if let Some(ref s_modal) = app.settings_modal {
+        let poster_cache_size = crate::config::get_poster_cache_size();
+        let history_count = app.db.get_history_count();
         render_settings_modal(
             f,
             size,
             &app.cfg,
-            s_modal.selected_idx,
+            s_modal,
+            poster_cache_size,
+            history_count,
         );
     }
 }

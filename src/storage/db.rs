@@ -53,6 +53,15 @@ impl Database {
         Ok(s)
     }
 
+    #[allow(dead_code)]
+    pub fn in_memory() -> Result<Self> {
+        let temp_dir = std::env::temp_dir();
+        let db_path = temp_dir.join(format!("kittymov_test_{}.db", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let s = Self { db_path };
+        s.init_tables()?;
+        Ok(s)
+    }
+
     fn conn(&self) -> Result<Connection> {
         Connection::open(&self.db_path)
     }
@@ -245,5 +254,19 @@ impl Database {
             list.push(r?);
         }
         Ok(list)
+    }
+
+    pub fn get_history_count(&self) -> usize {
+        if let Ok(conn) = self.conn() {
+            conn.query_row("SELECT COUNT(*) FROM history", [], |row| row.get(0)).unwrap_or(0)
+        } else {
+            0
+        }
+    }
+
+    pub fn clear_history(&self) -> Result<usize> {
+        let conn = self.conn()?;
+        let count = conn.execute("DELETE FROM history", [])?;
+        Ok(count)
     }
 }

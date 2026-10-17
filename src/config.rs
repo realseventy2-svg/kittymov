@@ -12,6 +12,16 @@ pub struct Config {
     pub hwdec: String,
     #[serde(default = "default_preferred_provider")]
     pub preferred_provider: String,
+    #[serde(default = "default_default_tab")]
+    pub default_tab: String,
+    #[serde(default)]
+    pub resume_on_startup: bool,
+    #[serde(default = "default_subtitle_augmentation")]
+    pub subtitle_augmentation: bool,
+    #[serde(default = "default_theme_name")]
+    pub theme_name: String,
+    #[serde(default = "default_poster_render_mode")]
+    pub poster_render_mode: String,
     pub tmdb_api_key: String,
     pub mpv_extra_args: Vec<String>,
 }
@@ -24,12 +34,35 @@ fn default_preferred_provider() -> String {
     "auto".to_string()
 }
 
+fn default_default_tab() -> String {
+    "movies".to_string()
+}
+
+fn default_subtitle_augmentation() -> bool {
+    true
+}
+
+fn default_theme_name() -> String {
+    "cyber".to_string()
+}
+
+fn default_poster_render_mode() -> String {
+    "half-block".to_string()
+}
+
 impl Config {
     pub fn save(&self) -> Result<(), std::io::Error> {
-        let cfg_path = get_config_dir().join("config.json");
+        let dir = get_config_dir();
+        let cfg_path = dir.join("config.json");
+        let tmp_path = dir.join("config.json.tmp");
         let data = serde_json::to_string_pretty(self)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-        std::fs::write(&cfg_path, data)
+            .map_err(std::io::Error::other)?;
+        std::fs::write(&tmp_path, data)?;
+        std::fs::rename(&tmp_path, &cfg_path)
+    }
+
+    pub fn reset_to_defaults(&mut self) {
+        *self = Self::default();
     }
 }
 
@@ -43,6 +76,11 @@ impl Default for Config {
             audio_mode: default_audio_mode(),
             hwdec: "auto".to_string(),
             preferred_provider: default_preferred_provider(),
+            default_tab: default_default_tab(),
+            resume_on_startup: false,
+            subtitle_augmentation: default_subtitle_augmentation(),
+            theme_name: default_theme_name(),
+            poster_render_mode: default_poster_render_mode(),
             tmdb_api_key: "653bb8af90162bd98fc7ee32bcbbfb3d".to_string(),
             mpv_extra_args: vec![
                 "--save-position-on-quit".to_string(),
@@ -51,6 +89,33 @@ impl Default for Config {
             ],
         }
     }
+}
+
+pub fn get_poster_cache_size() -> u64 {
+    let dir = get_cache_dir().join("posters");
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        entries.filter_map(|e| e.ok())
+            .filter_map(|e| e.metadata().ok())
+            .map(|m| m.len())
+            .sum()
+    } else {
+        0
+    }
+}
+
+pub fn clear_poster_cache() -> Result<usize, std::io::Error> {
+    let dir = get_cache_dir().join("posters");
+    let mut count = 0;
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            if let Ok(file_type) = entry.file_type() {
+                if file_type.is_file() && std::fs::remove_file(entry.path()).is_ok() {
+                    count += 1;
+                }
+            }
+        }
+    }
+    Ok(count)
 }
 
 pub fn get_config_dir() -> PathBuf {
@@ -117,6 +182,25 @@ mod tests {
         assert_eq!(cfg.audio_language, "jpn");
         assert_eq!(cfg.sub_language, "spa");
         assert!(!cfg.auto_play_next);
+        assert_eq!(cfg.default_tab, "movies");
+        assert_eq!(cfg.resume_on_startup, false);
+        assert_eq!(cfg.subtitle_augmentation, true);
+        assert_eq!(cfg.theme_name, "cyber");
+        assert_eq!(cfg.poster_render_mode, "half-block");
+    }
+
+    #[test]
+    fn test_config_reset_to_defaults() {
+        let mut cfg = Config::default();
+        cfg.default_tab = "history".to_string();
+        cfg.resume_on_startup = true;
+        cfg.theme_name = "amber".to_string();
+
+        cfg.reset_to_defaults();
+
+        assert_eq!(cfg.default_tab, "movies");
+        assert_eq!(cfg.resume_on_startup, false);
+        assert_eq!(cfg.theme_name, "cyber");
     }
 }
 
