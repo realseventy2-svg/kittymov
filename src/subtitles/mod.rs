@@ -64,6 +64,114 @@ pub fn normalize_language(code: &str) -> (String, String) {
     }
 }
 
+pub struct WyzieSubsProvider {
+    client: Client,
+}
+
+impl WyzieSubsProvider {
+    pub fn new() -> Self {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(6))
+            .build()
+            .unwrap_or_default();
+        Self { client }
+    }
+
+    pub async fn fetch_tracks(
+        &self,
+        imdb_id: Option<&str>,
+        tmdb_id: Option<i64>,
+        media_type: &str,
+        season: Option<i32>,
+        episode: Option<i32>,
+        api_key: &str,
+    ) -> Result<Vec<SubtitleTrack>, String> {
+        let key = api_key.trim();
+        if key.is_empty() {
+            return Err("Wyzie Subs API key is not configured".to_string());
+        }
+
+        let query_id = if let Some(id) = imdb_id.filter(|s| !s.trim().is_empty()) {
+            id.trim().to_string()
+        } else if let Some(tid) = tmdb_id {
+            tid.to_string()
+        } else {
+            return Err("Neither IMDb ID nor TMDB ID was provided".to_string());
+        };
+
+        let mut url = format!("https://sub.wyzie.io/search?id={}&key={}", query_id, key);
+        if media_type == "tv" {
+            let s = season.unwrap_or(1);
+            let ep = episode.unwrap_or(1);
+            url.push_str(&format!("&season={}&episode={}", s, ep));
+        }
+
+        #[derive(Deserialize)]
+        struct RawWyzieSub {
+            #[allow(dead_code)]
+            media: Option<String>,
+            display: Option<String>,
+            language: Option<String>,
+            format: Option<String>,
+            #[allow(dead_code)]
+            #[serde(rename = "isHearingImpaired")]
+            is_hearing_impaired: Option<bool>,
+            source: Option<String>,
+            url: String,
+        }
+
+        let resp = self
+            .client
+            .get(&url)
+            .header("User-Agent", USER_AGENT)
+            .send()
+            .await
+            .map_err(|e| format!("Wyzie Subs request failed: {}", e))?;
+
+        if !resp.status().is_success() {
+            return Err(format!("Wyzie Subs HTTP status: {}", resp.status()));
+        }
+
+        let raw_tracks: Vec<RawWyzieSub> = resp
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse Wyzie Subs JSON: {}", e))?;
+
+        let mut tracks = Vec::new();
+        for (idx, sub) in raw_tracks.into_iter().enumerate() {
+            if sub.url.is_empty() {
+                continue;
+            }
+            let raw_lang = sub.language.as_deref().unwrap_or("eng");
+            let (norm_lang, default_lang_name) = normalize_language(raw_lang);
+            let lang_name = sub.display.unwrap_or(default_lang_name);
+
+            let format = sub.format.unwrap_or_else(|| {
+                if sub.url.ends_with(".vtt") {
+                    "vtt".to_string()
+                } else {
+                    "srt".to_string()
+                }
+            });
+
+            let src = sub.source.unwrap_or_else(|| "wyzie".to_string());
+            let track_id = format!("wyzie_{}_{}_{}", norm_lang, src, idx);
+
+            tracks.push(SubtitleTrack {
+                id: track_id,
+                lang: norm_lang,
+                lang_name,
+                url: sub.url,
+                provider: "Wyzie Subs".to_string(),
+                format,
+                release_name: Some(format!("Wyzie [{}]", src)),
+            });
+        }
+
+        Ok(tracks)
+    }
+}
+
 pub struct OpenSubtitlesProvider {
     client: Client,
 }
@@ -178,7 +286,8 @@ impl OpenSubtitlesProvider {
 }
 
 pub struct SubtitleManager {
-    opensubtitles: OpenSubtitlesProvider,
+    wyzie: WyzieSubsProvider,
+    opensubtitles_fallback: OpenSubtitlesProvider,
     client: Client,
 }
 
@@ -190,7 +299,8 @@ impl SubtitleManager {
             .unwrap_or_default();
 
         Self {
-            opensubtitles: OpenSubtitlesProvider::new(),
+            wyzie: WyzieSubsProvider::new(),
+            opensubtitles_fallback: OpenSubtitlesProvider::new(),
             client,
         }
     }
@@ -199,15 +309,38 @@ impl SubtitleManager {
     pub async fn fetch_all_subtitles(
         &self,
         imdb_id: Option<&str>,
+        tmdb_id: Option<i64>,
         media_type: &str,
         season: Option<i32>,
         episode: Option<i32>,
+        wyzie_api_key: &str,
     ) -> Vec<SubtitleTrack> {
         let mut tracks = Vec::new();
 
+        // 1. Primary: Wyzie Subs (Clean, ad-stripped, aggregated)
+        if !wyzie_api_key.trim().is_empty() {
+            match self
+                .wyzie
+                .fetch_tracks(imdb_id, tmdb_id, media_type, season, episode, wyzie_api_key)
+                .await
+            {
+                Ok(wyzie_tracks) if !wyzie_tracks.is_empty() => {
+                    tracks.extend(wyzie_tracks);
+                    return tracks;
+                }
+                Ok(_) => {
+                    tracing::info!("Wyzie Subs returned 0 tracks, checking secondary fallback");
+                }
+                Err(e) => {
+                    tracing::warn!("Wyzie Subs query failed: {}. Checking secondary fallback", e);
+                }
+            }
+        }
+
+        // 2. Open secondary fallback if Wyzie API key is not yet set or returned no tracks
         if let Some(id) = imdb_id {
             if let Ok(ost_tracks) = self
-                .opensubtitles
+                .opensubtitles_fallback
                 .fetch_tracks(id, media_type, season, episode)
                 .await
             {
@@ -330,8 +463,8 @@ impl SubtitleManager {
         Ok(dest)
     }
 
-    /// Prepares subtitles for MPV by querying OpenSubtitles, downloading the preferred language,
-    /// plus top alternate languages, and returning local file paths.
+    /// Prepares subtitles for MPV by querying Wyzie Subs (with open fallback),
+    /// downloading the preferred language plus top alternate languages, and returning local file paths.
     #[allow(clippy::too_many_arguments)]
     pub async fn prepare_subtitles(
         &self,
@@ -342,10 +475,18 @@ impl SubtitleManager {
         season: Option<i32>,
         episode: Option<i32>,
         preferred_lang: &str,
+        wyzie_api_key: &str,
     ) -> Vec<String> {
         let imdb_id = tmdb.get_imdb_id(tmdb_id, media_type).await.ok();
         let all_tracks = self
-            .fetch_all_subtitles(imdb_id.as_deref(), media_type, season, episode)
+            .fetch_all_subtitles(
+                imdb_id.as_deref(),
+                Some(tmdb_id),
+                media_type,
+                season,
+                episode,
+                wyzie_api_key,
+            )
             .await;
 
         if all_tracks.is_empty() {
@@ -463,7 +604,7 @@ mod tests {
                 lang: "eng".to_string(),
                 lang_name: "English".to_string(),
                 url: "http://example.com/en1.srt".to_string(),
-                provider: "OpenSubtitles.org".to_string(),
+                provider: "Wyzie Subs".to_string(),
                 format: "srt".to_string(),
                 release_name: None,
             },
@@ -472,7 +613,7 @@ mod tests {
                 lang: "eng".to_string(),
                 lang_name: "English".to_string(),
                 url: "http://example.com/en2.srt".to_string(),
-                provider: "OpenSubtitles.org".to_string(),
+                provider: "Wyzie Subs".to_string(),
                 format: "srt".to_string(),
                 release_name: None,
             },
@@ -481,7 +622,7 @@ mod tests {
                 lang: "spa".to_string(),
                 lang_name: "Spanish".to_string(),
                 url: "http://example.com/es.srt".to_string(),
-                provider: "OpenSubtitles.org".to_string(),
+                provider: "Wyzie Subs".to_string(),
                 format: "srt".to_string(),
                 release_name: None,
             },
@@ -496,6 +637,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_wyzie_subs_status_api_connectivity() {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .unwrap_or_default();
+        let resp = client.get("https://sub.wyzie.io/status/api").send().await;
+        if let Ok(r) = resp {
+            assert!(r.status().is_success());
+        }
+    }
+
+    #[test]
+    fn test_wyzie_subs_provider_requires_key() {
+        let provider = WyzieSubsProvider::new();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let res = provider
+                .fetch_tracks(Some("tt0111161"), None, "movie", None, None, "")
+                .await;
+            assert!(res.is_err());
+            assert!(res.unwrap_err().contains("API key is not configured"));
+        });
+    }
+
+    #[tokio::test]
     async fn test_opensubtitles_fetch_live_movie() {
         let provider = OpenSubtitlesProvider::new();
         let tracks = provider
@@ -504,7 +670,7 @@ mod tests {
             .expect("Failed to fetch movie subs");
         assert!(
             !tracks.is_empty(),
-            "OpenSubtitles should return tracks for Shawshank Redemption"
+            "Fallback provider should return tracks for Shawshank Redemption"
         );
         assert!(
             tracks.iter().any(|t| t.lang == "eng"),
@@ -521,7 +687,7 @@ mod tests {
             .expect("Failed to fetch SU subs");
         assert!(
             !tracks.is_empty(),
-            "OpenSubtitles should return tracks for Steven Universe S01E01"
+            "Fallback provider should return tracks for Steven Universe S01E01"
         );
         assert!(
             tracks.iter().any(|t| t.lang == "eng"),

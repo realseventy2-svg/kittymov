@@ -632,11 +632,11 @@ fn get_category_rows(
                 "Preferred Subtitle Source",
                 SettingWidget::Select(match cfg.subtitle_source.to_lowercase().as_str() {
                     "provider" => "Provider Native Only (LookMovie .vtt)".to_string(),
-                    "opensubtitles" => "OpenSubtitles.org Only".to_string(),
-                    "both" | "all" => "Both (Provider Native + OpenSubtitles)".to_string(),
-                    _ => "Auto (Provider First, then OpenSubtitles)".to_string(),
+                    "wyzie" | "opensubtitles" => "Wyzie Subs Only (Ad-free & Aggregated)".to_string(),
+                    "both" | "all" => "Both (Provider Native + Wyzie Subs)".to_string(),
+                    _ => "Auto (Provider First, then Wyzie Subs)".to_string(),
                 }),
-                "Choose subtitle origin. Provider Native uses pre-synced provider tracks; OpenSubtitles offers broader languages.",
+                "Choose subtitle origin. Provider Native uses pre-synced provider tracks; Wyzie Subs aggregates ad-free subtitles.",
             ),
             (
                 "Subtitle Timing Offset",
@@ -687,16 +687,25 @@ fn get_category_rows(
                 "Subtitle Source Strategy",
                 SettingWidget::Select(match cfg.subtitle_source.to_lowercase().as_str() {
                     "provider" => "Provider Native (LookMovie)".to_string(),
-                    "opensubtitles" => "OpenSubtitles.org".to_string(),
+                    "wyzie" | "opensubtitles" => "Wyzie Subs".to_string(),
                     "both" | "all" => "Both (All Tracks Loaded)".to_string(),
                     _ => "Auto (Best Match First)".to_string(),
                 }),
-                "Controls whether subtitles are pulled from LookMovie's CDN or fetched externally from OpenSubtitles.",
+                "Controls whether subtitles are pulled from stream CDN or fetched externally from Wyzie Subs.",
             ),
             (
                 "Subtitle Augmentation",
                 SettingWidget::Toggle(cfg.subtitle_augmentation),
-                "Queries OpenSubtitles for missing subtitle tracks when provider streams lack requested languages.",
+                "Queries Wyzie Subs for missing subtitle tracks when provider streams lack requested languages.",
+            ),
+            (
+                "Wyzie Subs API Key",
+                SettingWidget::Info(if cfg.wyzie_api_key.trim().is_empty() {
+                    "Unset (Free key at store.wyzie.io/redeem)".to_string()
+                } else {
+                    format!("Active ({}••••)", &cfg.wyzie_api_key[..cfg.wyzie_api_key.len().min(6)])
+                }),
+                "Personal API key for Wyzie Subs. Free 1,000 req/day keys available at store.wyzie.io/redeem.",
             ),
             (
                 "Network Timeout",

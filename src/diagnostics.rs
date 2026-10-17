@@ -26,8 +26,8 @@ pub struct DiagnosticReport {
     pub chafa_version: Option<String>,
     pub tmdb_reachable: bool,
     pub tmdb_latency_ms: Option<u64>,
-    pub opensubtitles_reachable: bool,
-    pub opensubtitles_latency_ms: Option<u64>,
+    pub wyzie_subs_reachable: bool,
+    pub wyzie_subs_latency_ms: Option<u64>,
     pub history_entries_count: usize,
     pub favorites_count: usize,
     pub redacted_config: serde_json::Value,
@@ -241,18 +241,23 @@ pub async fn run_doctor(cfg: &Config) -> Result<(), Box<dyn std::error::Error>> 
     }
     println!();
 
-    // 5. Check Subtitle CDN Connectivity (OpenSubtitles)
-    print!(" \x1b[1m[5/5] OpenSubtitles CDN Connectivity:\x1b[0m ");
-    let ost_test_url = "https://opensubtitles-v3.strem.io/subtitles/movie/tt0111161.json";
-    let (ost_ok, ost_ms) = check_endpoint(ost_test_url).await;
-    if ost_ok {
+    // 5. Check Subtitle Engine Connectivity (Wyzie Subs API)
+    print!(" \x1b[1m[5/5] Subtitle Engine (Wyzie Subs API):\x1b[0m ");
+    let wyzie_test_url = "https://sub.wyzie.io/status/api";
+    let (wyzie_ok, wyzie_ms) = check_endpoint(wyzie_test_url).await;
+    if wyzie_ok {
         println!(
             "\x1b[1;32mONLINE\x1b[0m ({} ms latency)",
-            ost_ms.unwrap_or(0)
+            wyzie_ms.unwrap_or(0)
         );
+        if !cfg.wyzie_api_key.trim().is_empty() {
+            println!("       API Key: Configured (Wyzie Pro/Free ad-free active)");
+        } else {
+            println!("       API Key: Unset (Free ad-free keys available at store.wyzie.io/redeem)");
+        }
     } else {
         println!("\x1b[1;33mUNREACHABLE\x1b[0m");
-        println!("       OpenSubtitles CDN did not respond; embedded captions will still work.");
+        println!("       Wyzie Subs API did not respond; embedded captions will still work.");
     }
     println!();
 
@@ -281,12 +286,17 @@ pub async fn generate_diagnostic_report(cfg: &Config, db: &Database) -> Result<P
     );
     let (tmdb_ok, tmdb_ms) = check_endpoint(&tmdb_test_url).await;
 
-    let ost_test_url = "https://opensubtitles-v3.strem.io/subtitles/movie/tt0111161.json";
-    let (ost_ok, ost_ms) = check_endpoint(ost_test_url).await;
+    let wyzie_test_url = "https://sub.wyzie.io/status/api";
+    let (wyzie_ok, wyzie_ms) = check_endpoint(wyzie_test_url).await;
 
     let mut redacted_cfg_val = serde_json::to_value(cfg).map_err(|e| e.to_string())?;
     if let Some(obj) = redacted_cfg_val.as_object_mut() {
         if let Some(v) = obj.get_mut("tmdb_api_key") {
+            if let Some(s) = v.as_str() {
+                *v = serde_json::Value::String(redact_secret(s));
+            }
+        }
+        if let Some(v) = obj.get_mut("wyzie_api_key") {
             if let Some(s) = v.as_str() {
                 *v = serde_json::Value::String(redact_secret(s));
             }
@@ -319,8 +329,8 @@ pub async fn generate_diagnostic_report(cfg: &Config, db: &Database) -> Result<P
         chafa_version: chafa.map(|(_, v)| v),
         tmdb_reachable: tmdb_ok,
         tmdb_latency_ms: tmdb_ms,
-        opensubtitles_reachable: ost_ok,
-        opensubtitles_latency_ms: ost_ms,
+        wyzie_subs_reachable: wyzie_ok,
+        wyzie_subs_latency_ms: wyzie_ms,
         history_entries_count: history_count,
         favorites_count,
         redacted_config: redacted_cfg_val,

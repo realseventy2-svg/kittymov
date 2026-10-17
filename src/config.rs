@@ -30,6 +30,8 @@ pub struct Config {
     pub poster_render_mode: String,
     #[serde(default = "default_preferred_quality")]
     pub preferred_quality: String,
+    #[serde(default)]
+    pub wyzie_api_key: String,
     pub tmdb_api_key: String,
     pub mpv_extra_args: Vec<String>,
 }
@@ -104,6 +106,7 @@ impl Default for Config {
             theme_name: default_theme_name(),
             poster_render_mode: default_poster_render_mode(),
             preferred_quality: default_preferred_quality(),
+            wyzie_api_key: std::env::var("WYZIE_API_KEY").unwrap_or_default(),
             tmdb_api_key: "653bb8af90162bd98fc7ee32bcbbfb3d".to_string(),
             mpv_extra_args: vec![
                 "--save-position-on-quit".to_string(),
@@ -229,6 +232,11 @@ pub fn load_config() -> Config {
                             cfg.tmdb_api_key = key;
                         }
                     }
+                    if let Ok(key) = std::env::var("WYZIE_API_KEY") {
+                        if !key.trim().is_empty() {
+                            cfg.wyzie_api_key = key;
+                        }
+                    }
                     return cfg;
                 }
                 Err(err) => {
@@ -288,6 +296,7 @@ mod tests {
         assert!(cfg.subtitle_augmentation);
         assert_eq!(cfg.theme_name, "cyber");
         assert_eq!(cfg.poster_render_mode, "auto");
+        assert_eq!(cfg.wyzie_api_key, "");
     }
 
     #[test]

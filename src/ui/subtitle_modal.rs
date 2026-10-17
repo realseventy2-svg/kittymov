@@ -58,9 +58,9 @@ pub fn render_subtitle_modal(
     // 1. Header subtitle
     let source_label = match subtitle_source.to_lowercase().as_str() {
         "provider" => "Provider Native Only",
-        "opensubtitles" => "OpenSubtitles Only",
+        "wyzie" | "opensubtitles" => "Wyzie Subs Only",
         "both" | "all" => "Both (All Tracks)",
-        _ => "Auto (Provider + OpenSubtitles)",
+        _ => "Auto (Provider + Wyzie Subs)",
     };
     let desc = Line::from(vec![
         Span::styled(
@@ -84,7 +84,7 @@ pub fn render_subtitle_modal(
     if is_loading {
         lines.push(Line::from(""));
         lines.push(Line::from(vec![Span::styled(
-            "   Fetching subtitle tracks from OpenSubtitles...",
+            "   Fetching subtitle tracks from Wyzie Subs...",
             Style::default()
                 .fg(Theme::ACCENT_GOLD)
                 .add_modifier(Modifier::ITALIC),

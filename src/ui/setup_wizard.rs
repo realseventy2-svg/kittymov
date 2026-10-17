@@ -212,7 +212,7 @@ fn render_welcome_step(f: &mut Frame, area: Rect, selected_idx: usize) {
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
-                "Native pre-synced .vtt tracks with automatic OpenSubtitles fallback",
+                "Native pre-synced .vtt tracks with automatic Wyzie Subs fallback",
                 Style::default().fg(Theme::TEXT_MUTED),
             ),
         ]),
@@ -439,7 +439,7 @@ fn render_subtitles_step(f: &mut Frame, area: Rect, selected_idx: usize, cfg: &C
         (
             "4. Cloud Subtitle Augmentation",
             if cfg.subtitle_augmentation {
-                "Enabled (Auto-fetch OpenSubtitles if missing • Recommended)"
+                "Enabled (Auto-fetch Wyzie Subs if missing • Recommended)"
             } else {
                 "Disabled (Provider native only)"
             }
@@ -486,7 +486,7 @@ fn render_subtitles_step(f: &mut Frame, area: Rect, selected_idx: usize, cfg: &C
         0 => "Default voice language requested when multi-audio tracks (e.g. English, Japanese, French) are available in the stream.",
         1 => "Subtitled mode plays original audio with synchronized text subtitles. Dubbed mode selects localized audio dub tracks.",
         2 => "Default subtitle language automatically loaded and rendered on video start.",
-        3 => "Cloud Augmentation automatically fetches high-accuracy community subtitles from OpenSubtitles.org when streams lack your language.",
+        3 => "Cloud Augmentation automatically fetches high-accuracy ad-free subtitles from Wyzie Subs when streams lack your language.",
         _ => "Press [Enter] or [→] to proceed to the Streaming Providers configuration step.",
     };
 
@@ -552,7 +552,7 @@ fn render_providers_step(f: &mut Frame, area: Rect, selected_idx: usize, cfg: &C
             "3. Subtitle Source Preference",
             match cfg.subtitle_source.as_str() {
                 "provider" => "Provider Native Only",
-                "opensubtitles" => "OpenSubtitles Cloud Only",
+                "wyzie" | "opensubtitles" => "Wyzie Subs Cloud Only",
                 _ => "Auto (Provider Native pre-synced, with Cloud fallback)",
             },
         ),
@@ -596,7 +596,7 @@ fn render_providers_step(f: &mut Frame, area: Rect, selected_idx: usize, cfg: &C
     let hint = match selected_idx {
         0 => "Auto Fallback queries VixSrc first for ultra-fast startup, and automatically fails over to LookMovie if an endpoint is offline.",
         1 => "Broadcast Order matches standard TV air dates across all providers, ensuring consistent season and episode alignments.",
-        2 => "Auto subtitle mode prioritizes pre-synced native .vtt tracks from the stream encode, seamlessly augmenting with OpenSubtitles when absent.",
+        2 => "Auto subtitle mode prioritizes pre-synced native .vtt tracks from the stream encode, seamlessly augmenting with Wyzie Subs when absent.",
         _ => "Press [Enter] or [→] to proceed to the Appearance & Theme configuration step.",
     };
 

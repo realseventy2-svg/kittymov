@@ -92,7 +92,7 @@ pub fn render_help_modal(f: &mut Frame, area: Rect) {
     lines.push(Line::from(vec![
         Span::styled("  [t]           ", Style::default().fg(Theme::ACCENT_GOLD)),
         Span::styled(
-            "Subtitle Language Selector modal (OpenSubtitles CDN)",
+            "Subtitle Language Selector modal (Wyzie Subs API)",
             Style::default().fg(Theme::TEXT_BODY),
         ),
     ]));
@@ -177,7 +177,7 @@ pub fn render_help_modal(f: &mut Frame, area: Rect) {
     lines.push(Line::from(vec![
         Span::styled("  [s] in Subs   ", Style::default().fg(Theme::ACCENT_GOLD)),
         Span::styled(
-            "Cycle Subtitle Source mode (Provider, OpenSubtitles, Both)",
+            "Cycle Subtitle Source mode (Provider, Wyzie Subs, Both)",
             Style::default().fg(Theme::TEXT_BODY),
         ),
     ]));

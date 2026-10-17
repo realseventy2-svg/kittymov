@@ -168,11 +168,11 @@ pub fn default_subtitles_for_provider(
                 file_or_url: String::new(),
             },
             SubtitleTrackOption {
-                label: format!("{} [OpenSubtitles]", preferred_name),
+                label: format!("{} [Wyzie Subs]", preferred_name),
                 lang_code: preferred_lang.to_string(),
                 badge: "CLOUD".to_string(),
                 is_native: false,
-                description: "OpenSubtitles.org (.srt) cloud fallback".to_string(),
+                description: "Wyzie Subs (.srt) ad-free cloud fallback".to_string(),
                 file_or_url: String::new(),
             },
             SubtitleTrackOption {
@@ -205,11 +205,11 @@ pub fn default_subtitles_for_provider(
                 file_or_url: String::new(),
             },
             SubtitleTrackOption {
-                label: format!("{} [OpenSubtitles]", preferred_name),
+                label: format!("{} [Wyzie Subs]", preferred_name),
                 lang_code: preferred_lang.to_string(),
                 badge: "CLOUD".to_string(),
                 is_native: false,
-                description: "OpenSubtitles.org (.srt) • Community external subtitle".to_string(),
+                description: "Wyzie Subs (.srt) • Community ad-free subtitle".to_string(),
                 file_or_url: String::new(),
             },
             SubtitleTrackOption {
@@ -244,7 +244,7 @@ pub fn default_subtitles_for_provider(
                 badge: "CLOUD".to_string(),
                 is_native: false,
                 description: format!(
-                    "OpenSubtitles.org (.srt) • Auto-fetch cloud subtitle [{}]",
+                    "Wyzie Subs (.srt) • Auto-fetch cloud subtitle [{}]",
                     preferred_name
                 ),
                 file_or_url: String::new(),
@@ -254,7 +254,7 @@ pub fn default_subtitles_for_provider(
                 lang_code: preferred_lang.to_string(),
                 badge: "CLOUD".to_string(),
                 is_native: false,
-                description: "OpenSubtitles.org (.srt) • Cloud Subtitle".to_string(),
+                description: "Wyzie Subs (.srt) • Cloud Subtitle".to_string(),
                 file_or_url: String::new(),
             },
             SubtitleTrackOption {
@@ -262,7 +262,7 @@ pub fn default_subtitles_for_provider(
                 lang_code: "spa".to_string(),
                 badge: "CLOUD".to_string(),
                 is_native: false,
-                description: "OpenSubtitles.org (.srt) • Cloud Subtitle".to_string(),
+                description: "Wyzie Subs (.srt) • Cloud Subtitle".to_string(),
                 file_or_url: String::new(),
             },
             SubtitleTrackOption {
@@ -270,7 +270,7 @@ pub fn default_subtitles_for_provider(
                 lang_code: "fra".to_string(),
                 badge: "CLOUD".to_string(),
                 is_native: false,
-                description: "OpenSubtitles.org (.srt) • Cloud Subtitle".to_string(),
+                description: "Wyzie Subs (.srt) • Cloud Subtitle".to_string(),
                 file_or_url: String::new(),
             },
             SubtitleTrackOption {
@@ -289,7 +289,7 @@ pub fn default_subtitles_for_provider(
                 badge: "SMART".to_string(),
                 is_native: true,
                 description: format!(
-                    "Provider native if available, OpenSubtitles fallback [{}]",
+                    "Provider native if available, Wyzie Subs fallback [{}]",
                     preferred_name
                 ),
                 file_or_url: String::new(),
@@ -299,7 +299,7 @@ pub fn default_subtitles_for_provider(
                 lang_code: preferred_lang.to_string(),
                 badge: "AUTO".to_string(),
                 is_native: true,
-                description: "Best available match (Native .vtt or OpenSubtitles .srt)".to_string(),
+                description: "Best available match (Native .vtt or Wyzie Subs .srt)".to_string(),
                 file_or_url: String::new(),
             },
             SubtitleTrackOption {
@@ -685,7 +685,7 @@ impl SettingsCategory {
         match self {
             SettingsCategory::General => 5,
             SettingsCategory::Playback => 8,
-            SettingsCategory::Providers => 4,
+            SettingsCategory::Providers => 5,
             SettingsCategory::Appearance => 3,
             SettingsCategory::Storage => 6,
         }
@@ -842,11 +842,11 @@ pub fn get_all_settings_metadata(cfg: &Config) -> Vec<SettingMatch> {
             label: "Preferred Subtitle Source",
             value_str: match cfg.subtitle_source.to_lowercase().as_str() {
                 "provider" => "Provider Native Only (LookMovie .vtt)".to_string(),
-                "opensubtitles" => "OpenSubtitles.org Only".to_string(),
-                "both" | "all" => "Both (Provider Native + OpenSubtitles)".to_string(),
-                _ => "Auto (Provider First, then OpenSubtitles)".to_string(),
+                "wyzie" | "opensubtitles" => "Wyzie Subs Only (Ad-free & Aggregated)".to_string(),
+                "both" | "all" => "Both (Provider Native + Wyzie Subs)".to_string(),
+                _ => "Auto (Provider First, then Wyzie Subs)".to_string(),
             },
-            description: "Preferred origin for subtitles. Provider Native uses pre-synced provider tracks; OpenSubtitles offers broader languages.",
+            description: "Preferred origin for subtitles. Provider Native uses pre-synced provider tracks; Wyzie Subs aggregates ad-free subtitles.",
         },
         SettingMatch {
             category: SettingsCategory::Playback,
@@ -915,11 +915,11 @@ pub fn get_all_settings_metadata(cfg: &Config) -> Vec<SettingMatch> {
             label: "Subtitle Source Strategy",
             value_str: match cfg.subtitle_source.to_lowercase().as_str() {
                 "provider" => "Provider Native (LookMovie)".to_string(),
-                "opensubtitles" => "OpenSubtitles.org".to_string(),
+                "wyzie" | "opensubtitles" => "Wyzie Subs".to_string(),
                 "both" | "all" => "Both (All Tracks Loaded)".to_string(),
                 _ => "Auto (Best Match First)".to_string(),
             },
-            description: "Controls whether subtitles are pulled from LookMovie's CDN or fetched externally from OpenSubtitles.",
+            description: "Controls whether subtitles are pulled from stream CDN or fetched externally from Wyzie Subs.",
         },
         SettingMatch {
             category: SettingsCategory::Providers,
@@ -927,12 +927,24 @@ pub fn get_all_settings_metadata(cfg: &Config) -> Vec<SettingMatch> {
             item_idx: 2,
             label: "Subtitle Augmentation",
             value_str: if cfg.subtitle_augmentation { "ON (Auto-pull from LookMovie)".to_string() } else { "OFF".to_string() },
-            description: "When enabled, queries OpenSubtitles tracks if primary stream lacks requested subtitles.",
+            description: "When enabled, queries Wyzie Subs tracks if primary stream lacks requested subtitles.",
         },
         SettingMatch {
             category: SettingsCategory::Providers,
             category_idx: 2,
             item_idx: 3,
+            label: "Wyzie Subs API Key",
+            value_str: if cfg.wyzie_api_key.trim().is_empty() {
+                "Unset (Free key at store.wyzie.io/redeem)".to_string()
+            } else {
+                format!("Active ({}••••)", &cfg.wyzie_api_key[..cfg.wyzie_api_key.len().min(6)])
+            },
+            description: "Personal API key for Wyzie Subs ad-free subtitle service.",
+        },
+        SettingMatch {
+            category: SettingsCategory::Providers,
+            category_idx: 2,
+            item_idx: 4,
             label: "Network Timeout",
             value_str: "10 seconds (Auto Failover)".to_string(),
             description: "Maximum duration kitty-mov waits for a provider response before failing over.",
@@ -1607,12 +1619,12 @@ impl App {
     }
 
     pub fn cycle_subtitle_source(&mut self) {
-        let sources = ["auto", "provider", "opensubtitles", "both"];
+        let sources = ["auto", "provider", "wyzie", "both"];
         self.cfg.subtitle_source = cycle_list(&sources, &self.cfg.subtitle_source, true);
         let _ = self.cfg.save();
         let label = match self.cfg.subtitle_source.as_str() {
             "provider" => "Provider Native Only",
-            "opensubtitles" => "OpenSubtitles Only",
+            "wyzie" | "opensubtitles" => "Wyzie Subs Only",
             "both" | "all" => "Both (All Tracks)",
             _ => "Auto (Best Match)",
         };
@@ -1822,7 +1834,7 @@ impl App {
                         self.cfg.sub_language = cycle_list(&langs, &self.cfg.sub_language, forward);
                     }
                     3 => {
-                        let sources = ["auto", "provider", "opensubtitles", "both"];
+                        let sources = ["auto", "provider", "wyzie", "both"];
                         self.cfg.subtitle_source =
                             cycle_list(&sources, &self.cfg.subtitle_source, forward);
                     }
@@ -1852,7 +1864,7 @@ impl App {
                             cycle_list(&providers, &self.cfg.preferred_provider, forward);
                     }
                     1 => {
-                        let sources = ["auto", "provider", "opensubtitles", "both"];
+                        let sources = ["auto", "provider", "wyzie", "both"];
                         self.cfg.subtitle_source =
                             cycle_list(&sources, &self.cfg.subtitle_source, forward);
                     }
@@ -2096,7 +2108,7 @@ impl App {
                     self.cfg.episode_order = cycle_list(&orders, &self.cfg.episode_order, forward);
                 }
                 2 => {
-                    let sources = ["auto", "provider", "opensubtitles"];
+                    let sources = ["auto", "provider", "wyzie"];
                     self.cfg.subtitle_source =
                         cycle_list(&sources, &self.cfg.subtitle_source, forward);
                 }
@@ -2862,7 +2874,7 @@ impl App {
                         step: LoadingStep::FetchingSubtitles,
                         status: StepStatus::Active,
                         detail: format!(
-                            "Fetching OpenSubtitles cloud track [{}]...",
+                            "Fetching Wyzie Subs cloud track [{}]...",
                             sub_opt.lang_code
                         ),
                     });
@@ -2875,6 +2887,7 @@ impl App {
                             req_clone.season,
                             req_clone.episode,
                             &sub_opt.lang_code,
+                            &cfg.wyzie_api_key,
                         )
                         .await;
                     if !ext.is_empty() {
@@ -2883,7 +2896,7 @@ impl App {
                             step: LoadingStep::FetchingSubtitles,
                             status: StepStatus::Completed,
                             detail: format!(
-                                "Loaded OpenSubtitles.org cloud tracks [{}]",
+                                "Loaded Wyzie Subs cloud tracks [{}]",
                                 sub_opt.lang_code
                             ),
                         });
@@ -2904,7 +2917,7 @@ impl App {
                 }
             } else {
                 // Automatic: if stream has native subtitles (LookMovie .vtt), use them;
-                // if it doesn't (VixSrc), automatically query OpenSubtitles!
+                // if it doesn't (VixSrc), automatically query Wyzie Subs!
                 if !stream.subtitles.is_empty() {
                     let _ = tx.send(LoadingProgress::StepUpdate {
                         step: LoadingStep::FetchingSubtitles,
@@ -2919,7 +2932,7 @@ impl App {
                         step: LoadingStep::FetchingSubtitles,
                         status: StepStatus::Active,
                         detail: format!(
-                            "Stream has no native subtitles; auto-fetching OpenSubtitles [{}]...",
+                            "Stream has no native subtitles; auto-fetching Wyzie Subs [{}]...",
                             pref_sub_lang
                         ),
                     });
@@ -2932,6 +2945,7 @@ impl App {
                             req_clone.season,
                             req_clone.episode,
                             &pref_sub_lang,
+                            &cfg.wyzie_api_key,
                         )
                         .await;
                     if !ext.is_empty() {
@@ -2940,7 +2954,7 @@ impl App {
                             step: LoadingStep::FetchingSubtitles,
                             status: StepStatus::Completed,
                             detail: format!(
-                                "Auto-loaded OpenSubtitles.org cloud tracks [{}]",
+                                "Auto-loaded Wyzie Subs cloud tracks [{}]",
                                 pref_sub_lang
                             ),
                         });
@@ -3110,11 +3124,18 @@ impl App {
                 return;
             };
 
-        self.status_message = format!("Searching OpenSubtitles for {}...", target_title);
+        self.status_message = format!("Searching Wyzie Subs for {}...", target_title);
         let imdb_id = self.tmdb.get_imdb_id(tmdb_id, &media_type).await.ok();
         let tracks = self
             .subtitles
-            .fetch_all_subtitles(imdb_id.as_deref(), &media_type, season, episode)
+            .fetch_all_subtitles(
+                imdb_id.as_deref(),
+                Some(tmdb_id),
+                &media_type,
+                season,
+                episode,
+                &self.cfg.wyzie_api_key,
+            )
             .await;
         let groups = crate::subtitles::SubtitleManager::group_by_language(&tracks);
 
@@ -3224,11 +3245,11 @@ impl App {
                 let sub_src = self.cfg.subtitle_source.to_lowercase();
                 let should_fetch_ext = match sub_src.as_str() {
                     "provider" => stream.subtitles.is_empty() && self.cfg.subtitle_augmentation,
-                    "opensubtitles" | "both" | "all" => true,
+                    "wyzie" | "opensubtitles" | "both" | "all" => true,
                     _ => stream.subtitles.is_empty() || self.cfg.subtitle_augmentation,
                 };
 
-                if sub_src == "opensubtitles" {
+                if sub_src == "wyzie" || sub_src == "opensubtitles" {
                     stream.subtitles.clear();
                 }
 
@@ -3247,6 +3268,7 @@ impl App {
                             None,
                             None,
                             &self.cfg.sub_language,
+                            &self.cfg.wyzie_api_key,
                         )
                         .await;
                     if !external_subs.is_empty() {
@@ -3354,15 +3376,15 @@ impl App {
             .await
         {
             Ok(mut stream) => {
-                // Subtitle source selection (provider native vs OpenSubtitles vs both vs auto)
+                // Subtitle source selection (provider native vs Wyzie Subs vs both vs auto)
                 let sub_src = self.cfg.subtitle_source.to_lowercase();
                 let should_fetch_ext = match sub_src.as_str() {
                     "provider" => stream.subtitles.is_empty() && self.cfg.subtitle_augmentation,
-                    "opensubtitles" | "both" | "all" => true,
+                    "wyzie" | "opensubtitles" | "both" | "all" => true,
                     _ => stream.subtitles.is_empty() || self.cfg.subtitle_augmentation,
                 };
 
-                if sub_src == "opensubtitles" {
+                if sub_src == "wyzie" || sub_src == "opensubtitles" {
                     stream.subtitles.clear();
                 }
 
@@ -3381,6 +3403,7 @@ impl App {
                             Some(season),
                             Some(episode),
                             &self.cfg.sub_language,
+                            &self.cfg.wyzie_api_key,
                         )
                         .await;
                     if !external_subs.is_empty() {
@@ -3560,6 +3583,7 @@ impl App {
                                                     Some(current_season),
                                                     Some(current_episode),
                                                     &self.cfg.sub_language,
+                                                    &self.cfg.wyzie_api_key,
                                                 )
                                                 .await;
                                             if !external_subs.is_empty() {
@@ -3713,7 +3737,7 @@ mod tests {
         assert_eq!(SettingsCategory::ALL.len(), 5);
         assert_eq!(SettingsCategory::General.item_count(), 5);
         assert_eq!(SettingsCategory::Playback.item_count(), 8);
-        assert_eq!(SettingsCategory::Providers.item_count(), 4);
+        assert_eq!(SettingsCategory::Providers.item_count(), 5);
         assert_eq!(SettingsCategory::Appearance.item_count(), 3);
         assert_eq!(SettingsCategory::Storage.item_count(), 6);
     }
