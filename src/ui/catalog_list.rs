@@ -188,7 +188,7 @@ pub fn render_catalog_panel(
         server_badge,
         auto_play_str,
         Span::styled(
-            "[?] Help  [t] Subs  [s] Server  [d] Sub/Dub  [S] Settings  [f] Fav  ",
+            "[?] Help  [Enter] Tracks  [p] Play  [s] Tracks  [d] Sub/Dub  [S] Settings  [f] Fav  ",
             Style::default().fg(Theme::TEXT_MUTED),
         ),
         Span::styled(status_text, Style::default().fg(Theme::TEXT_BODY)),

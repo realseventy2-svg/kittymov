@@ -208,7 +208,7 @@ pub fn render_episode_modal(
 
     // 4. Hotkey Hints
     let hints = Line::from(vec![
-        Span::styled(" [Enter] Watch   [s] Server   [t] Subs   [o] Order   [d] Sub/Dub   [← / →] Season   [a] Auto-Play   [?] Help   [Esc] Close ", Style::default().fg(Theme::TEXT_MUTED)),
+        Span::styled(" [Enter] Tracks   [p] Play   [s] Tracks   [d] Sub/Dub   [← / →] Season   [a] Auto-Play   [?] Help   [Esc] Close ", Style::default().fg(Theme::TEXT_MUTED)),
     ]);
     f.render_widget(
         Paragraph::new(hints).alignment(Alignment::Center),

@@ -384,10 +384,10 @@ async fn handle_key_event(
         return;
     }
 
-    // 3. If Provider / Tracks selector modal is open
+    // 3. If Provider / Tracks selector screen is open
     if app.provider_modal.is_some() {
         match code {
-            KeyCode::Esc => {
+            KeyCode::Esc | KeyCode::Char('q') => {
                 app.provider_modal = None;
             }
             KeyCode::Char('?') | KeyCode::F(1) => {
@@ -412,13 +412,19 @@ async fn handle_key_event(
                 app.provider_modal_set_category(crate::app::ProviderModalCategory::Provider);
             }
             KeyCode::Char('2') => {
-                app.provider_modal_set_category(crate::app::ProviderModalCategory::Quality);
+                app.provider_modal_set_category(crate::app::ProviderModalCategory::Source);
             }
             KeyCode::Char('3') => {
+                app.provider_modal_set_category(crate::app::ProviderModalCategory::Quality);
+            }
+            KeyCode::Char('4') => {
                 app.provider_modal_set_category(crate::app::ProviderModalCategory::Subtitles);
             }
             KeyCode::Char('d') => {
                 app.toggle_audio_mode();
+            }
+            KeyCode::Char('f') => {
+                app.toggle_favorite().await;
             }
             KeyCode::Enter => {
                 app.provider_modal_confirm().await;
@@ -526,6 +532,9 @@ async fn handle_key_event(
             KeyCode::Enter => {
                 app.on_enter().await;
             }
+            KeyCode::Char('p') => {
+                app.quick_play_selected().await;
+            }
             KeyCode::Char('a') => {
                 app.cfg.auto_play_next = !app.cfg.auto_play_next;
                 let _ = app.cfg.save();
@@ -571,6 +580,9 @@ async fn handle_key_event(
         }
         KeyCode::Enter => {
             app.on_enter().await;
+        }
+        KeyCode::Char('p') => {
+            app.quick_play_selected().await;
         }
         KeyCode::Char('s') => {
             app.open_provider_modal_for_selected();

@@ -34,6 +34,12 @@ pub fn render_ui(f: &mut Frame, app: &App) {
         return;
     }
 
+    // 0.5 If Tracks / Provider Selector Screen is active, render full-screen tracks view (Kunai style)!
+    if let Some(ref p_modal) = app.provider_modal {
+        render_provider_modal(f, size, p_modal);
+        return;
+    }
+
     // Outer frame with glowing cyber-cyan double borders
     let outer_block = Block::default()
         .borders(Borders::ALL)
@@ -106,11 +112,6 @@ pub fn render_ui(f: &mut Frame, app: &App) {
             &app.cfg.audio_mode,
             &app.cfg.episode_order,
         );
-    }
-
-    // If Provider / Tracks selector modal is active, overlay it
-    if let Some(ref p_modal) = app.provider_modal {
-        render_provider_modal(f, size, p_modal);
     }
 
     // If Subtitle selector modal is active, overlay it

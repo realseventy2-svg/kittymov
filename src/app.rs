@@ -29,6 +29,7 @@ pub struct ProviderOption {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProviderModalCategory {
     Provider,
+    Source,
     Quality,
     Subtitles,
 }
@@ -37,6 +38,16 @@ pub enum ProviderModalCategory {
 pub enum ProviderModalPane {
     Categories,
     Content,
+}
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct SourceTrackOption {
+    pub id: String,
+    pub name: String,
+    pub status_str: String,
+    pub is_selected: bool,
+    pub description: String,
 }
 
 #[derive(Debug, Clone)]
@@ -243,6 +254,105 @@ pub fn default_subtitles_for_provider(
     }
 }
 
+pub fn default_sources_for_provider(provider_id: &str) -> Vec<SourceTrackOption> {
+    match provider_id.to_lowercase().as_str() {
+        "vixsrc" => vec![
+            SourceTrackOption {
+                id: "vanguard".to_string(),
+                name: "Vanguard (Primary)".to_string(),
+                status_str: "current • ready".to_string(),
+                is_selected: true,
+                description: "VixSrc CDN • Vanguard • host vixsrc.to • 1080p FHD".to_string(),
+            },
+            SourceTrackOption {
+                id: "mirage".to_string(),
+                name: "Mirage (Fast CDN)".to_string(),
+                status_str: "available".to_string(),
+                is_selected: false,
+                description: "VixSrc CDN • Mirage • host vixsrc.to • 1080p high bitrate"
+                    .to_string(),
+            },
+            SourceTrackOption {
+                id: "velocity".to_string(),
+                name: "Velocity (Adaptive)".to_string(),
+                status_str: "available".to_string(),
+                is_selected: false,
+                description: "VixSrc CDN • Velocity • host vixsrc.to • 720p HD".to_string(),
+            },
+            SourceTrackOption {
+                id: "ignite".to_string(),
+                name: "Ignite (Edge Server)".to_string(),
+                status_str: "available".to_string(),
+                is_selected: false,
+                description: "VixSrc CDN • Ignite • host vixsrc.to • low latency".to_string(),
+            },
+            SourceTrackOption {
+                id: "tampa".to_string(),
+                name: "Tampa (Mirror)".to_string(),
+                status_str: "available".to_string(),
+                is_selected: false,
+                description: "VixSrc CDN • Tampa • host vixsrc.to • US-East mirror".to_string(),
+            },
+            SourceTrackOption {
+                id: "solstice".to_string(),
+                name: "Solstice (Global)".to_string(),
+                status_str: "available".to_string(),
+                is_selected: false,
+                description: "VixSrc CDN • Solstice • global edge network".to_string(),
+            },
+        ],
+        "lookmovie" => vec![
+            SourceTrackOption {
+                id: "storage5".to_string(),
+                name: "Storage 5 (Master)".to_string(),
+                status_str: "current • ready".to_string(),
+                is_selected: true,
+                description: "LookMovie CDN • Storage 5 • host lookmovie2.to • 1080p master"
+                    .to_string(),
+            },
+            SourceTrackOption {
+                id: "storage4".to_string(),
+                name: "Storage 4 (Mirror)".to_string(),
+                status_str: "available".to_string(),
+                is_selected: false,
+                description: "LookMovie CDN • Storage 4 • host lookmovie2.to • 1080p mirror"
+                    .to_string(),
+            },
+            SourceTrackOption {
+                id: "storage1".to_string(),
+                name: "Storage 1 (EU Server)".to_string(),
+                status_str: "available".to_string(),
+                is_selected: false,
+                description: "LookMovie CDN • Storage 1 • host lookmovie2.to • 720p HD".to_string(),
+            },
+        ],
+        _ => vec![
+            SourceTrackOption {
+                id: "auto".to_string(),
+                name: "Auto (Best Available)".to_string(),
+                status_str: "current • ready".to_string(),
+                is_selected: true,
+                description: "Automatic multi-provider chain (VixSrc CDN → LookMovie CDN)"
+                    .to_string(),
+            },
+            SourceTrackOption {
+                id: "vixsrc_direct".to_string(),
+                name: "VixSrc Vanguard".to_string(),
+                status_str: "available".to_string(),
+                is_selected: false,
+                description: "Fast 1080p HLS stream • host vixsrc.to".to_string(),
+            },
+            SourceTrackOption {
+                id: "lookmovie_direct".to_string(),
+                name: "LookMovie Storage 5".to_string(),
+                status_str: "available".to_string(),
+                is_selected: false,
+                description: "Pre-synced .vtt subtitles • host lookmovie2.to".to_string(),
+            },
+        ],
+    }
+}
+
 pub struct ProviderSelectModalState {
     pub target_title: String,
     pub request: MediaRequest,
@@ -251,6 +361,8 @@ pub struct ProviderSelectModalState {
     pub active_pane: ProviderModalPane,
     pub options: Vec<ProviderOption>,
     pub selected_idx: usize,
+    pub sources: Vec<SourceTrackOption>,
+    pub selected_source_idx: usize,
     pub qualities: Vec<QualityTrackOption>,
     pub selected_quality_idx: usize,
     pub subtitles: Vec<SubtitleTrackOption>,
@@ -272,6 +384,7 @@ impl ProviderSelectModalState {
             .position(|o| o.id.eq_ignore_ascii_case(preferred_provider))
             .unwrap_or(0);
         let chosen_prov = options[selected_idx].id.as_str();
+        let sources = default_sources_for_provider(chosen_prov);
         let qualities = default_qualities_for_provider(chosen_prov);
         let subtitles = default_subtitles_for_provider(chosen_prov, preferred_lang);
 
@@ -283,6 +396,8 @@ impl ProviderSelectModalState {
             active_pane: ProviderModalPane::Categories,
             options,
             selected_idx,
+            sources,
+            selected_source_idx: 0,
             qualities,
             selected_quality_idx: 0,
             subtitles,
@@ -297,6 +412,8 @@ impl ProviderSelectModalState {
             .get(self.selected_idx)
             .map(|o| o.id.as_str())
             .unwrap_or("auto");
+        self.sources = default_sources_for_provider(prov_id);
+        self.selected_source_idx = 0;
         self.qualities = default_qualities_for_provider(prov_id);
         self.selected_quality_idx = 0;
         self.subtitles = default_subtitles_for_provider(prov_id, preferred_lang);
@@ -1056,6 +1173,21 @@ impl App {
             return;
         }
 
+        if self.episode_modal.is_some() {
+            self.open_provider_modal_for_selected();
+            return;
+        }
+
+        if let Some(item) = self.current_items.get(self.selected_index).cloned() {
+            if item.media_type == "tv" {
+                self.open_episode_modal(item).await;
+            } else {
+                self.open_provider_modal_for_selected();
+            }
+        }
+    }
+
+    pub async fn quick_play_selected(&mut self) {
         let ep_play_info = if let Some(ref modal) = self.episode_modal {
             modal.episodes.get(modal.selected_episode_idx).map(|ep| {
                 let season_num = modal
@@ -1620,7 +1752,8 @@ impl App {
             match m.active_pane {
                 ProviderModalPane::Categories => {
                     m.active_category = match m.active_category {
-                        ProviderModalCategory::Provider => ProviderModalCategory::Quality,
+                        ProviderModalCategory::Provider => ProviderModalCategory::Source,
+                        ProviderModalCategory::Source => ProviderModalCategory::Quality,
                         ProviderModalCategory::Quality => ProviderModalCategory::Subtitles,
                         ProviderModalCategory::Subtitles => ProviderModalCategory::Provider,
                     };
@@ -1630,6 +1763,11 @@ impl App {
                         if !m.options.is_empty() {
                             m.selected_idx = (m.selected_idx + 1) % m.options.len();
                             m.update_dependent_tracks(&self.cfg.sub_language);
+                        }
+                    }
+                    ProviderModalCategory::Source => {
+                        if !m.sources.is_empty() {
+                            m.selected_source_idx = (m.selected_source_idx + 1) % m.sources.len();
                         }
                     }
                     ProviderModalCategory::Quality => {
@@ -1655,7 +1793,8 @@ impl App {
                 ProviderModalPane::Categories => {
                     m.active_category = match m.active_category {
                         ProviderModalCategory::Provider => ProviderModalCategory::Subtitles,
-                        ProviderModalCategory::Quality => ProviderModalCategory::Provider,
+                        ProviderModalCategory::Source => ProviderModalCategory::Provider,
+                        ProviderModalCategory::Quality => ProviderModalCategory::Source,
                         ProviderModalCategory::Subtitles => ProviderModalCategory::Quality,
                     };
                 }
@@ -1665,6 +1804,12 @@ impl App {
                             m.selected_idx =
                                 (m.selected_idx + m.options.len() - 1) % m.options.len();
                             m.update_dependent_tracks(&self.cfg.sub_language);
+                        }
+                    }
+                    ProviderModalCategory::Source => {
+                        if !m.sources.is_empty() {
+                            m.selected_source_idx =
+                                (m.selected_source_idx + m.sources.len() - 1) % m.sources.len();
                         }
                     }
                     ProviderModalCategory::Quality => {
@@ -3040,7 +3185,8 @@ mod tests {
         modal.selected_idx = look_idx;
         modal.update_dependent_tracks("eng");
 
-        // Verify qualities for LookMovie
+        // Verify sources and qualities for LookMovie
+        assert!(modal.sources.iter().any(|s| s.name.contains("Storage")));
         assert!(modal.qualities.iter().any(|q| q.label.contains("1080p")));
         // Verify native subtitles are present for LookMovie
         assert!(modal
@@ -3057,7 +3203,8 @@ mod tests {
         modal.selected_idx = vix_idx;
         modal.update_dependent_tracks("eng");
 
-        // Verify VixSrc subtitles use OpenSubtitles Cloud tracks
+        // Verify VixSrc sources and subtitles
+        assert!(modal.sources.iter().any(|s| s.name.contains("Vanguard")));
         assert!(modal
             .subtitles
             .iter()
