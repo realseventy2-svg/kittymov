@@ -130,6 +130,8 @@ pub fn get_cache_dir() -> PathBuf {
     dir.push("kittymov");
     let posters = dir.join("posters");
     std::fs::create_dir_all(&posters).ok();
+    let subtitles = dir.join("subtitles");
+    std::fs::create_dir_all(&subtitles).ok();
     dir
 }
 

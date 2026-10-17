@@ -428,6 +428,24 @@ impl TmdbClient {
         }).collect())
     }
 
+    pub async fn get_imdb_id(&self, tmdb_id: i64, media_type: &str) -> Result<String, String> {
+        let endpoint = if media_type == "tv" { "tv" } else { "movie" };
+        let url = format!("{}/{}/{}/external_ids?api_key={}", self.base_url, endpoint, tmdb_id, self.api_key);
+
+        #[derive(Deserialize)]
+        struct ExternalIdsResp {
+            imdb_id: Option<String>,
+        }
+
+        let resp = self.client.get(&url).send().await
+            .map_err(|e| format!("Failed to request external IDs: {}", e))?;
+        let data: ExternalIdsResp = resp.json().await
+            .map_err(|e| format!("Failed to parse external IDs JSON: {}", e))?;
+
+        data.imdb_id.filter(|s| !s.is_empty())
+            .ok_or_else(|| format!("No IMDb ID found for {} {}", media_type, tmdb_id))
+    }
+
     pub async fn get_cached_poster(&self, poster_path: &str) -> Option<PathBuf> {
         if poster_path.is_empty() {
             return None;

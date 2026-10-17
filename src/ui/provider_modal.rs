@@ -54,7 +54,8 @@ pub fn render_provider_modal(
                 if is_sub { "Sub (Original + English Subs)" } else { "Dub (English Audio Track)" },
                 Style::default().fg(if is_sub { Theme::ACCENT_PINK } else { Theme::ACCENT_CYAN }).add_modifier(Modifier::BOLD),
             ),
-            Span::styled(" (Press [d] to toggle)", Style::default().fg(Theme::TEXT_MUTED)),
+            Span::styled(" [d]  •  Subs: ", Style::default().fg(Theme::TEXT_MUTED)),
+            Span::styled("OpenSubtitles [t]", Style::default().fg(Theme::ACCENT_GOLD).add_modifier(Modifier::BOLD)),
         ]),
     ];
     let header_p = Paragraph::new(header_lines)
@@ -96,7 +97,7 @@ pub fn render_provider_modal(
 
     // 3. Hotkey Footer
     let hints = Line::from(vec![
-        Span::styled(" [Enter / 1-3] Launch Server   [↑/↓ / k/j] Select   [d] Sub/Dub   [Esc] Cancel ", Style::default().fg(Theme::TEXT_MUTED)),
+        Span::styled(" [Enter / 1-3] Launch Server   [↑/↓ / k/j] Select   [d] Sub/Dub   [t] Subtitles   [Esc] Cancel ", Style::default().fg(Theme::TEXT_MUTED)),
     ]);
     let footer_p = Paragraph::new(hints)
         .block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(Theme::BORDER_MUTED)))

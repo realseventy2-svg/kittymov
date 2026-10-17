@@ -34,6 +34,19 @@ pub struct ProviderSelectModalState {
     pub selected_idx: usize,
 }
 
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct SubtitleSelectModalState {
+    pub target_title: String,
+    pub tmdb_id: i64,
+    pub media_type: String,
+    pub season: Option<i32>,
+    pub episode: Option<i32>,
+    pub options: Vec<crate::subtitles::SubtitleLanguageGroup>,
+    pub selected_idx: usize,
+    pub is_loading: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsPane {
     Categories,
@@ -397,7 +410,9 @@ pub struct App {
     pub current_poster_text: Option<ratatui::text::Text<'static>>,
     pub episode_modal: Option<EpisodeModalState>,
     pub provider_modal: Option<ProviderSelectModalState>,
+    pub subtitle_modal: Option<SubtitleSelectModalState>,
     pub settings_modal: Option<SettingsModalState>,
+    pub subtitles: Arc<crate::subtitles::SubtitleManager>,
     pub should_quit: bool,
 }
 
@@ -405,12 +420,14 @@ impl App {
     pub fn new(cfg: Config, db: Database) -> Self {
         let tmdb = Arc::new(TmdbClient::new(&cfg.tmdb_api_key));
         let providers = Arc::new(ProviderManager::with_preference(&cfg.preferred_provider));
+        let subtitles = Arc::new(crate::subtitles::SubtitleManager::new());
 
         Self {
             cfg,
             db,
             tmdb,
             providers,
+            subtitles,
             active_tab: ActiveTab::Movies,
             current_items: Vec::new(),
             selected_index: 0,
@@ -420,6 +437,7 @@ impl App {
             current_poster_text: None,
             episode_modal: None,
             provider_modal: None,
+            subtitle_modal: None,
             settings_modal: None,
             should_quit: false,
         }
@@ -1070,6 +1088,76 @@ impl App {
         }
     }
 
+    pub async fn open_subtitle_modal(&mut self) {
+        let (tmdb_id, media_type, season, episode, target_title) = if let Some(ref modal) = self.episode_modal {
+            if let Some(ep) = modal.episodes.get(modal.selected_episode_idx) {
+                let season_num = modal.seasons.get(modal.selected_season_idx)
+                    .map(|s| s.season_number)
+                    .unwrap_or(1);
+                let ep_num = ep.episode_number;
+                let title = modal.series.title.clone();
+                (modal.series.tmdb_id, "tv".to_string(), Some(season_num), Some(ep_num), format!("{} S{:02}E{:02}", title, season_num, ep_num))
+            } else {
+                return;
+            }
+        } else if let Some(ref modal) = self.provider_modal {
+            let req = &modal.request;
+            (req.tmdb_id, req.media_type.clone(), req.season, req.episode, modal.target_title.clone())
+        } else if let Some(item) = self.current_items.get(self.selected_index).cloned() {
+            if item.media_type == "tv" {
+                (item.tmdb_id, "tv".to_string(), Some(1), Some(1), format!("{} S01E01", item.title))
+            } else {
+                (item.tmdb_id, "movie".to_string(), None, None, format!("{} ({})", item.title, item.year))
+            }
+        } else {
+            return;
+        };
+
+        self.status_message = format!("Searching OpenSubtitles for {}...", target_title);
+        let imdb_id = self.tmdb.get_imdb_id(tmdb_id, &media_type).await.ok();
+        let tracks = self.subtitles.fetch_all_subtitles(imdb_id.as_deref(), &media_type, season, episode).await;
+        let groups = crate::subtitles::SubtitleManager::group_by_language(&tracks);
+
+        let selected_idx = groups.iter().position(|g| g.lang_code == self.cfg.sub_language).unwrap_or(0);
+
+        self.subtitle_modal = Some(SubtitleSelectModalState {
+            target_title,
+            tmdb_id,
+            media_type,
+            season,
+            episode,
+            options: groups,
+            selected_idx,
+            is_loading: false,
+        });
+    }
+
+    pub fn subtitle_modal_next(&mut self) {
+        if let Some(ref mut m) = self.subtitle_modal {
+            if !m.options.is_empty() {
+                m.selected_idx = (m.selected_idx + 1) % m.options.len();
+            }
+        }
+    }
+
+    pub fn subtitle_modal_prev(&mut self) {
+        if let Some(ref mut m) = self.subtitle_modal {
+            if !m.options.is_empty() {
+                m.selected_idx = (m.selected_idx + m.options.len() - 1) % m.options.len();
+            }
+        }
+    }
+
+    pub fn subtitle_modal_confirm(&mut self) {
+        if let Some(modal) = self.subtitle_modal.take() {
+            if let Some(opt) = modal.options.get(modal.selected_idx) {
+                self.cfg.sub_language = opt.lang_code.clone();
+                let _ = self.cfg.save();
+                self.status_message = format!("Subtitle Language set to: {} [{}]", opt.lang_name, opt.lang_code);
+            }
+        }
+    }
+
     pub async fn play_movie(&mut self, item: MediaItem) {
         let choice = self.cfg.preferred_provider.clone();
         self.play_movie_with_provider(item.tmdb_id, &item.title, &item.year, &item.poster_path, &choice).await;
@@ -1100,7 +1188,24 @@ impl App {
         };
 
         match self.providers.resolve_with_choice(provider_choice, &req).await {
-            Ok(stream) => {
+            Ok(mut stream) => {
+                // Augment with dedicated Subtitle Provider (OpenSubtitles)
+                if stream.subtitles.is_empty() || self.cfg.subtitle_augmentation {
+                    self.status_message = format!("Fetching subtitles for '{}' [{}]...", title, self.cfg.sub_language);
+                    let external_subs = self.subtitles.prepare_subtitles(
+                        &self.tmdb,
+                        tmdb_id,
+                        title,
+                        "movie",
+                        None,
+                        None,
+                        &self.cfg.sub_language,
+                    ).await;
+                    if !external_subs.is_empty() {
+                        stream.subtitles = external_subs;
+                    }
+                }
+
                 let _ = self.db.record_watch(
                     tmdb_id,
                     "movie",
@@ -1164,6 +1269,23 @@ impl App {
 
         match self.providers.resolve_with_choice(provider_choice, &req).await {
             Ok(mut stream) => {
+                // Augment with dedicated Subtitle Provider (OpenSubtitles)
+                if stream.subtitles.is_empty() || self.cfg.subtitle_augmentation {
+                    self.status_message = format!("Fetching subtitles for {} [{}]...", display_title, self.cfg.sub_language);
+                    let external_subs = self.subtitles.prepare_subtitles(
+                        &self.tmdb,
+                        tmdb_id,
+                        title,
+                        "tv",
+                        Some(season),
+                        Some(episode),
+                        &self.cfg.sub_language,
+                    ).await;
+                    if !external_subs.is_empty() {
+                        stream.subtitles = external_subs;
+                    }
+                }
+
                 let _ = self.db.record_watch(
                     tmdb_id,
                     "tv",
@@ -1272,6 +1394,20 @@ impl App {
                                     // JIT token refresh to ensure no expired links
                                     if next_stream.is_expired_or_expiring_soon() {
                                         let _ = self.providers.refresh_candidate(&mut next_stream).await;
+                                    }
+                                    if next_stream.subtitles.is_empty() || self.cfg.subtitle_augmentation {
+                                        let external_subs = self.subtitles.prepare_subtitles(
+                                            &self.tmdb,
+                                            tmdb_id,
+                                            title,
+                                            "tv",
+                                            Some(current_season),
+                                            Some(current_episode),
+                                            &self.cfg.sub_language,
+                                        ).await;
+                                        if !external_subs.is_empty() {
+                                            next_stream.subtitles = external_subs;
+                                        }
                                     }
 
                                     // Seamlessly inject next episode into running MPV window!

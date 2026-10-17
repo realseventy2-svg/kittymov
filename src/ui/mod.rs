@@ -5,6 +5,7 @@ pub mod metadata_panel;
 pub mod poster;
 pub mod provider_modal;
 pub mod settings_modal;
+pub mod subtitle_modal;
 pub mod theme;
 
 use ratatui::layout::{Constraint, Direction, Layout};
@@ -17,6 +18,7 @@ use self::episode_modal::render_episode_modal;
 use self::metadata_panel::render_metadata_panel;
 use self::provider_modal::render_provider_modal;
 use self::settings_modal::render_settings_modal;
+use self::subtitle_modal::render_subtitle_modal;
 use self::theme::Theme;
 use crate::app::App;
 
@@ -108,6 +110,19 @@ pub fn render_ui(f: &mut Frame, app: &App) {
             &app.cfg.audio_mode,
             &p_modal.options,
             p_modal.selected_idx,
+        );
+    }
+
+    // If Subtitle selector modal is active, overlay it
+    if let Some(ref sub_modal) = app.subtitle_modal {
+        render_subtitle_modal(
+            f,
+            size,
+            &sub_modal.target_title,
+            &app.cfg.sub_language,
+            &sub_modal.options,
+            sub_modal.selected_idx,
+            sub_modal.is_loading,
         );
     }
 

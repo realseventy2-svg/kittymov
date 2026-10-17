@@ -4,6 +4,7 @@ mod metadata;
 mod player;
 mod providers;
 mod storage;
+mod subtitles;
 mod ui;
 
 use std::io::stdout;
@@ -271,11 +272,37 @@ async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::e
         return;
     }
 
-    // 2. If Provider / Server selector modal is open
+    // 2. If Subtitle Language Selector modal is open
+    if app.subtitle_modal.is_some() {
+        match code {
+            KeyCode::Esc => {
+                app.subtitle_modal = None;
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                app.subtitle_modal_prev();
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                app.subtitle_modal_next();
+            }
+            KeyCode::Enter => {
+                app.subtitle_modal_confirm();
+            }
+            KeyCode::Char('d') => {
+                app.toggle_audio_mode();
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    // 3. If Provider / Server selector modal is open
     if let Some(ref mut p_modal) = app.provider_modal {
         match code {
             KeyCode::Esc => {
                 app.provider_modal = None;
+            }
+            KeyCode::Char('t') => {
+                app.open_subtitle_modal().await;
             }
             KeyCode::Up | KeyCode::Char('k') => {
                 app.provider_modal_prev();
@@ -310,7 +337,7 @@ async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::e
         return;
     }
 
-    // 3. If in search input mode
+    // 4. If in search input mode
     if app.is_searching {
         match code {
             KeyCode::Char(c) => {
@@ -338,6 +365,9 @@ async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::e
             }
             KeyCode::Char('s') => {
                 app.open_provider_modal_for_selected();
+            }
+            KeyCode::Char('t') => {
+                app.open_subtitle_modal().await;
             }
             KeyCode::Char('d') => {
                 app.toggle_audio_mode();
@@ -430,6 +460,9 @@ async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::e
         }
         KeyCode::Char('s') => {
             app.open_provider_modal_for_selected();
+        }
+        KeyCode::Char('t') => {
+            app.open_subtitle_modal().await;
         }
         KeyCode::Char('d') => {
             app.toggle_audio_mode();
