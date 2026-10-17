@@ -47,7 +47,8 @@ impl MpvController {
 
         let mut cmd = Command::new(&cfg.player);
         cmd.arg(format!("--input-ipc-server={}", self.ipc_path.display()));
-        cmd.arg(format!("--title=KittyMov: {}", title));
+        let title_with_provider = format!("KittyMov: {} [{}]", title, stream.provider_name);
+        cmd.arg(format!("--title={}", title_with_provider));
         cmd.arg(format!("--alang={},en,enUS,English", cfg.audio_language));
         cmd.arg(format!("--slang={},en,enUS,English", cfg.sub_language));
         cmd.arg(format!("--hwdec={}", cfg.hwdec));
@@ -69,6 +70,10 @@ impl MpvController {
                 .collect::<Vec<_>>()
                 .join(",");
             cmd.arg(format!("--http-header-fields={}", headers_str));
+        }
+
+        for sub in &stream.subtitles {
+            cmd.arg(format!("--sub-file={}", sub));
         }
 
         for arg in &cfg.mpv_extra_args {

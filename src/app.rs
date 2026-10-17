@@ -6,8 +6,7 @@ use tokio::sync::mpsc;
 use crate::config::Config;
 use crate::metadata::{MediaItem, TmdbClient, TvEpisode, TvSeason};
 use crate::player::{MpvController, PlaybackStatus};
-use crate::providers::vixsrc::VixSrcProvider;
-use crate::providers::{MediaRequest, Provider, StreamCandidate};
+use crate::providers::{MediaRequest, ProviderManager, StreamCandidate};
 use crate::storage::Database;
 use crate::ui::poster::render_poster_to_text;
 
@@ -33,7 +32,7 @@ pub struct App {
     pub cfg: Config,
     pub db: Database,
     pub tmdb: Arc<TmdbClient>,
-    pub vixsrc: Arc<VixSrcProvider>,
+    pub providers: Arc<ProviderManager>,
 
     pub active_tab: ActiveTab,
     pub current_items: Vec<MediaItem>,
@@ -51,13 +50,13 @@ pub struct App {
 impl App {
     pub fn new(cfg: Config, db: Database) -> Self {
         let tmdb = Arc::new(TmdbClient::new(&cfg.tmdb_api_key));
-        let vixsrc = Arc::new(VixSrcProvider::new());
+        let providers = Arc::new(ProviderManager::new());
 
         Self {
             cfg,
             db,
             tmdb,
-            vixsrc,
+            providers,
             active_tab: ActiveTab::Movies,
             current_items: Vec::new(),
             selected_index: 0,
@@ -281,9 +280,10 @@ impl App {
             season: None,
             episode: None,
             title: item.title.clone(),
+            year: Some(item.year.clone()),
         };
 
-        match self.vixsrc.resolve(&req).await {
+        match self.providers.resolve_with_fallback(&req).await {
             Ok(stream) => {
                 let _ = self.db.record_watch(
                     item.tmdb_id,
@@ -323,10 +323,11 @@ impl App {
             media_type: "tv".to_string(),
             season: Some(season),
             episode: Some(episode),
-            title: display_title.clone(),
+            title: title.to_string(),
+            year: Some(year.to_string()),
         };
 
-        match self.vixsrc.resolve(&req).await {
+        match self.providers.resolve_with_fallback(&req).await {
             Ok(mut stream) => {
                 let _ = self.db.record_watch(
                     tmdb_id,
@@ -343,7 +344,7 @@ impl App {
 
                 // Check anti-expiration
                 if stream.is_expired_or_expiring_soon() {
-                    let _ = self.vixsrc.refresh_token(&mut stream).await;
+                    let _ = self.providers.refresh_candidate(&mut stream).await;
                 }
 
                 self.launch_mpv_tv_auto_next(tmdb_id, title, year, poster_path, season, episode, stream).await;
@@ -367,7 +368,7 @@ impl App {
         // Restore terminal for Ratatui
         crossterm::terminal::enable_raw_mode().ok();
         crossterm::execute!(std::io::stdout(), crossterm::terminal::EnterAlternateScreen).ok();
-        self.status_message = format!("Finished watching '{}'", title);
+        self.status_message = format!("Finished watching '{}' [{}]", title, stream.provider_name);
     }
 
     /// Full Auto-Play Next Episode Engine with background prefetching and JIT token refreshing
@@ -405,17 +406,18 @@ impl App {
                             // When progress reaches 80% (or last 3 minutes), start pre-resolving next episode
                             if self.cfg.auto_play_next && !prefetch_started && (duration > 0.0 && pos / duration >= 0.8 || pos >= 1200.0) {
                                 prefetch_started = true;
-                                let vixsrc = self.vixsrc.clone();
+                                let providers = self.providers.clone();
                                 let next_req = MediaRequest {
                                     tmdb_id,
                                     media_type: "tv".to_string(),
                                     season: Some(current_season),
                                     episode: Some(current_episode + 1),
-                                    title: format!("{} S{:02}E{:02}", title, current_season, current_episode + 1),
+                                    title: title.to_string(),
+                                    year: Some(year.to_string()),
                                 };
 
                                 tokio::spawn(async move {
-                                    vixsrc.resolve(&next_req).await
+                                    providers.resolve_with_fallback(&next_req).await
                                 });
                             }
                         }
@@ -427,13 +429,14 @@ impl App {
                                     media_type: "tv".to_string(),
                                     season: Some(current_season),
                                     episode: Some(current_episode),
-                                    title: format!("{} S{:02}E{:02}", title, current_season, current_episode),
+                                    title: title.to_string(),
+                                    year: Some(year.to_string()),
                                 };
 
-                                if let Ok(mut next_stream) = self.vixsrc.resolve(&next_req).await {
+                                if let Ok(mut next_stream) = self.providers.resolve_with_fallback(&next_req).await {
                                     // JIT token refresh to ensure no expired links
                                     if next_stream.is_expired_or_expiring_soon() {
-                                        let _ = self.vixsrc.refresh_token(&mut next_stream).await;
+                                        let _ = self.providers.refresh_candidate(&mut next_stream).await;
                                     }
 
                                     // Seamlessly inject next episode into running MPV window!
@@ -445,7 +448,10 @@ impl App {
                                     } else {
                                         format!("{} S{:02}E{:02}", title, current_season, current_episode)
                                     };
-                                    let _ = controller.send_command(&["set_property", "title", &format!("KittyMov: {}", next_title)]).await;
+                                    let _ = controller.send_command(&["set_property", "title", &format!("KittyMov: {} [{}]", next_title, next_stream.provider_name)]).await;
+                                    for sub in &next_stream.subtitles {
+                                        let _ = controller.send_command(&["sub-add", sub, "auto"]).await;
+                                    }
                                     let _ = controller.send_command(&["loadfile", &next_stream.stream_url, "replace"]).await;
 
                                     let _ = self.db.record_watch(
