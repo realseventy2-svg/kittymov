@@ -657,8 +657,10 @@ fn render_appearance_step(f: &mut Frame, area: Rect, selected_idx: usize, cfg: &
             "2. Poster Artwork Render Mode",
             match cfg.poster_render_mode.as_str() {
                 "off" => "Off (Clean Text-Only Minimalist)",
+                "kitty" => "Kitty Protocol (Pixel-Perfect Native Graphics)",
                 "half-block" => "Half-Block (ANSI Unicode ▀▄ • Universally Supported)",
-                _ => "High-Resolution TrueColor (Sextant & Quad • Cinematic)",
+                "high-res" => "High-Resolution TrueColor (Sextant & Quad • Cinematic)",
+                _ => "Auto (Native Kitty Protocol if Supported, High-Res Fallback)",
             },
         ),
         (

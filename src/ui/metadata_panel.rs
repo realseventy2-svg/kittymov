@@ -7,11 +7,13 @@ use ratatui::Frame;
 use super::theme::Theme;
 use crate::metadata::MediaItem;
 
+#[allow(clippy::too_many_arguments)]
 pub fn render_metadata_panel(
     f: &mut Frame,
     area: Rect,
     item: Option<&MediaItem>,
     poster_text: Option<&ratatui::text::Text>,
+    is_kitty_poster: bool,
     is_bookmarked: bool,
     current_index: usize,
     total_items: usize,
@@ -43,6 +45,9 @@ pub fn render_metadata_panel(
         let p = Paragraph::new(text.clone())
             .block(poster_block)
             .alignment(Alignment::Center);
+        f.render_widget(p, chunks[0]);
+    } else if is_kitty_poster {
+        let p = Paragraph::new("").block(poster_block);
         f.render_widget(p, chunks[0]);
     } else {
         let p = Paragraph::new(vec![

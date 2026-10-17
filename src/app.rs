@@ -959,10 +959,16 @@ pub fn get_all_settings_metadata(cfg: &Config) -> Vec<SettingMatch> {
             label: "Poster Art Render Mode",
             value_str: match cfg.poster_render_mode.as_str() {
                 "off" => "Off (Text-Only Mode)".to_string(),
+                "kitty" => "Kitty Protocol (Pixel-Perfect Native Graphics)".to_string(),
                 "half-block" => "Half-Block Universal (▀▄ 24-bit ANSI)".to_string(),
-                _ => "High-Resolution TrueColor (Sextant & Quad Subpixels)".to_string(),
+                "high-res" => "High-Resolution TrueColor (Sextants & Quads)".to_string(),
+                _ => if crate::ui::poster::is_kitty_graphics_supported() {
+                    "Auto (Kitty Protocol Active)".to_string()
+                } else {
+                    "Auto (High-Resolution Sextants)".to_string()
+                },
             },
-            description: "Render high-resolution colored poster previews using Unicode sextants/quads, half-blocks, or text-only fallback.",
+            description: "Render high-resolution colored poster previews using Kitty graphics protocol, Unicode sextants/quads, or half-blocks.",
         },
         SettingMatch {
             category: SettingsCategory::Appearance,
@@ -1134,6 +1140,9 @@ pub struct App {
     pub status_message: String,
 
     pub current_poster_text: Option<ratatui::text::Text<'static>>,
+    pub current_poster_kitty: Option<Vec<u8>>,
+    pub kitty_poster_dirty: bool,
+    pub had_kitty_poster_drawn: bool,
     pub episode_modal: Option<EpisodeModalState>,
     pub provider_modal: Option<ProviderSelectModalState>,
     pub subtitle_modal: Option<SubtitleSelectModalState>,
@@ -1167,6 +1176,9 @@ impl App {
             is_searching: false,
             status_message: "Ready".to_string(),
             current_poster_text: None,
+            current_poster_kitty: None,
+            kitty_poster_dirty: false,
+            had_kitty_poster_drawn: false,
             episode_modal: None,
             provider_modal: None,
             subtitle_modal: None,
@@ -1355,8 +1367,17 @@ impl App {
     pub async fn update_poster(&mut self) {
         if self.cfg.poster_render_mode == "off" {
             self.current_poster_text = None;
+            self.current_poster_kitty = None;
+            self.kitty_poster_dirty = true;
             return;
         }
+
+        let use_kitty = match self.cfg.poster_render_mode.as_str() {
+            "kitty" => true,
+            "auto" => crate::ui::poster::is_kitty_graphics_supported(),
+            _ => false,
+        };
+
         if let Some(item) = self.current_items.get(self.selected_index) {
             if !item.poster_path.is_empty() {
                 if let Some(path) = self.tmdb.get_cached_poster(&item.poster_path).await {
@@ -1365,13 +1386,67 @@ impl App {
                     let inner_h = term_h.saturating_sub(2);
                     let panel_w = (inner_w as f32 * 0.38) as u16;
                     let (w, h) = calculate_poster_dimensions_for_panel(panel_w, inner_h);
+
+                    if use_kitty {
+                        if let Some(raw) = crate::ui::poster::render_poster_to_kitty(&path, w, h) {
+                            self.current_poster_kitty = Some(raw);
+                            self.current_poster_text = None;
+                            self.kitty_poster_dirty = true;
+                            return;
+                        }
+                    }
+
+                    let text_mode = if self.cfg.poster_render_mode == "half-block" {
+                        "half-block"
+                    } else {
+                        "high-res"
+                    };
                     self.current_poster_text =
-                        render_poster_to_text(&path, w, h, &self.cfg.poster_render_mode);
+                        render_poster_to_text(&path, w, h, text_mode);
+                    self.current_poster_kitty = None;
+                    self.kitty_poster_dirty = true;
                     return;
                 }
             }
         }
         self.current_poster_text = None;
+        self.current_poster_kitty = None;
+        self.kitty_poster_dirty = true;
+    }
+
+    pub fn is_catalog_visible_without_modals(&self) -> bool {
+        self.setup_wizard.is_none()
+            && self.playback_loading.is_none()
+            && self.provider_modal.is_none()
+            && self.episode_modal.is_none()
+            && self.settings_modal.is_none()
+            && self.subtitle_modal.is_none()
+            && self.error_dialog.is_none()
+            && !self.show_help
+            && (self.active_tab == ActiveTab::Movies
+                || self.active_tab == ActiveTab::Series
+                || self.active_tab == ActiveTab::History
+                || self.active_tab == ActiveTab::Bookmarks
+                || (self.active_tab == ActiveTab::Search && !self.current_items.is_empty()))
+    }
+
+    pub fn render_kitty_poster_if_needed(&mut self, term_w: u16, term_h: u16) {
+        if self.is_catalog_visible_without_modals() {
+            if let Some(ref kp) = self.current_poster_kitty {
+                if self.kitty_poster_dirty || !self.had_kitty_poster_drawn {
+                    let rect = crate::ui::poster::calculate_poster_screen_rect(term_w, term_h);
+                    crate::ui::poster::draw_kitty_graphics(kp, rect.x, rect.y);
+                    self.had_kitty_poster_drawn = true;
+                    self.kitty_poster_dirty = false;
+                }
+                return;
+            }
+        }
+
+        if self.had_kitty_poster_drawn {
+            crate::ui::poster::clear_kitty_graphics();
+            self.had_kitty_poster_drawn = false;
+        }
     }
 
     pub async fn select_next(&mut self) {
@@ -1792,7 +1867,7 @@ impl App {
                         self.cfg.theme_name = cycle_list(&themes, &self.cfg.theme_name, forward);
                     }
                     1 => {
-                        let modes = ["high-res", "half-block", "off"];
+                        let modes = ["auto", "kitty", "high-res", "half-block", "off"];
                         self.cfg.poster_render_mode =
                             cycle_list(&modes, &self.cfg.poster_render_mode, forward);
                     }
@@ -1912,7 +1987,7 @@ impl App {
                 }
                 SettingsCategory::Appearance => {
                     self.cfg.theme_name = "cyber".to_string();
-                    self.cfg.poster_render_mode = "high-res".to_string();
+                    self.cfg.poster_render_mode = "auto".to_string();
                 }
                 SettingsCategory::Storage => {
                     s.confirmation = Some(SettingsConfirmation::ResetDefaults);
@@ -2040,7 +2115,7 @@ impl App {
                     self.cfg.theme_name = cycle_list(&themes, &self.cfg.theme_name, forward);
                 }
                 1 => {
-                    let modes = ["high-res", "half-block", "off"];
+                    let modes = ["auto", "kitty", "high-res", "half-block", "off"];
                     self.cfg.poster_render_mode =
                         cycle_list(&modes, &self.cfg.poster_render_mode, forward);
                 }
@@ -3358,6 +3433,7 @@ impl App {
     }
 
     async fn launch_mpv_session(&mut self, stream: &StreamCandidate, title: &str) {
+        crate::ui::poster::clear_kitty_graphics();
         // Temporarily release terminal for MPV
         crossterm::terminal::disable_raw_mode().ok();
         crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen).ok();
@@ -3374,6 +3450,7 @@ impl App {
         // Restore terminal for Ratatui
         crossterm::terminal::enable_raw_mode().ok();
         crossterm::execute!(std::io::stdout(), crossterm::terminal::EnterAlternateScreen).ok();
+        self.kitty_poster_dirty = true;
 
         match result {
             Ok(()) => {
@@ -3398,6 +3475,7 @@ impl App {
         mut current_episode: i32,
         initial_stream: StreamCandidate,
     ) {
+        crate::ui::poster::clear_kitty_graphics();
         crossterm::terminal::disable_raw_mode().ok();
         crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen).ok();
 
@@ -3560,6 +3638,7 @@ impl App {
 
         crossterm::terminal::enable_raw_mode().ok();
         crossterm::execute!(std::io::stdout(), crossterm::terminal::EnterAlternateScreen).ok();
+        self.kitty_poster_dirty = true;
 
         match result {
             Ok(()) => {

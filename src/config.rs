@@ -63,7 +63,7 @@ fn default_theme_name() -> String {
 }
 
 fn default_poster_render_mode() -> String {
-    "high-res".to_string()
+    "auto".to_string()
 }
 
 fn default_preferred_quality() -> String {
@@ -287,7 +287,7 @@ mod tests {
         assert!(!cfg.resume_on_startup);
         assert!(cfg.subtitle_augmentation);
         assert_eq!(cfg.theme_name, "cyber");
-        assert_eq!(cfg.poster_render_mode, "high-res");
+        assert_eq!(cfg.poster_render_mode, "auto");
     }
 
     #[test]

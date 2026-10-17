@@ -719,10 +719,16 @@ fn get_category_rows(
                 "Poster Art Render Mode",
                 SettingWidget::Select(match cfg.poster_render_mode.as_str() {
                     "off" => "Off (Text-Only Mode)".to_string(),
+                    "kitty" => "Kitty Protocol (Pixel-Perfect Native Graphics)".to_string(),
                     "half-block" => "Half-Block Universal (▀▄ 24-bit ANSI)".to_string(),
-                    _ => "High-Resolution TrueColor (Sextant & Quad Subpixels)".to_string(),
+                    "high-res" => "High-Resolution TrueColor (Sextants & Quads)".to_string(),
+                    _ => if crate::ui::poster::is_kitty_graphics_supported() {
+                        "Auto (Kitty Protocol Active)".to_string()
+                    } else {
+                        "Auto (High-Resolution Sextants)".to_string()
+                    },
                 }),
-                "Preview artwork format. High-Resolution uses subpixel Unicode sextants/quads; Half-Block uses classic ▀▄; Off preserves terminal simplicity.",
+                "Preview artwork format. Auto detects Kitty/Ghostty/WezTerm for pixel-perfect graphics; High-Res uses subpixel Unicode; Half-Block uses classic ▀▄.",
             ),
             (
                 "Interface Layout",

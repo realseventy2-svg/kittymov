@@ -75,11 +75,13 @@ pub fn render_ui(f: &mut Frame, app: &App) {
     };
 
     // Render left metadata column
+    let is_kitty_poster = app.current_poster_kitty.is_some() && app.current_poster_text.is_none();
     render_metadata_panel(
         f,
         columns[0],
         selected_item,
         app.current_poster_text.as_ref(),
+        is_kitty_poster,
         is_bookmarked,
         app.selected_index,
         app.current_items.len(),

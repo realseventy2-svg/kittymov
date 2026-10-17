@@ -19,6 +19,114 @@ pub fn calculate_poster_dimensions_for_panel(panel_w: u16, panel_h: u16) -> (u16
     (target_w, poster_h)
 }
 
+pub fn calculate_poster_screen_rect(term_w: u16, term_h: u16) -> ratatui::layout::Rect {
+    use ratatui::layout::{Constraint, Direction, Layout, Rect};
+    use ratatui::widgets::{Block, Borders};
+
+    let outer_block = Block::default().borders(Borders::ALL);
+    let inner_area = outer_block.inner(Rect::new(0, 0, term_w, term_h));
+
+    let columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(38), Constraint::Percentage(62)])
+        .split(inner_area);
+
+    let (target_w, target_h) =
+        calculate_poster_dimensions_for_panel(columns[0].width, columns[0].height);
+    let poster_frame_height = target_h + 2;
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(poster_frame_height),
+            Constraint::Length(3),
+            Constraint::Min(8),
+        ])
+        .split(columns[0]);
+
+    let poster_block = Block::default().borders(Borders::ALL);
+    let poster_inner = poster_block.inner(chunks[0]);
+
+    let x = poster_inner.x + (poster_inner.width.saturating_sub(target_w)) / 2;
+    let y = poster_inner.y + (poster_inner.height.saturating_sub(target_h)) / 2;
+
+    Rect {
+        x,
+        y,
+        width: target_w,
+        height: target_h,
+    }
+}
+
+pub fn is_kitty_graphics_supported() -> bool {
+    if std::env::var("KITTY_WINDOW_ID").is_ok() || std::env::var("KITTY_PID").is_ok() {
+        return true;
+    }
+    if let Ok(term) = std::env::var("TERM") {
+        let t = term.to_lowercase();
+        if t.contains("kitty") || t.contains("ghostty") {
+            return true;
+        }
+    }
+    if std::env::var("GHOSTTY_RESOURCES_DIR").is_ok() {
+        return true;
+    }
+    if let Ok(prog) = std::env::var("TERM_PROGRAM") {
+        let p = prog.to_lowercase();
+        if p.contains("wezterm") || p.contains("rio") {
+            return true;
+        }
+    }
+    if std::env::var("WEZTERM_PANE").is_ok() {
+        return true;
+    }
+    if let Ok(ver) = std::env::var("KONSOLE_VERSION") {
+        if let Ok(v) = ver.parse::<u64>() {
+            if v >= 220000 {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+pub fn render_poster_to_kitty(path: &Path, width: u16, height: u16) -> Option<Vec<u8>> {
+    let size_arg = format!("{}x{}", width, height);
+    let output = Command::new("chafa")
+        .arg("--probe=off")
+        .arg("--polite=on")
+        .arg("-f")
+        .arg("kitty")
+        .arg(format!("--size={}", size_arg))
+        .arg(path)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+
+    if !output.status.success() || output.stdout.is_empty() {
+        return None;
+    }
+
+    Some(output.stdout)
+}
+
+pub fn clear_kitty_graphics() {
+    use std::io::Write;
+    let mut stdout = std::io::stdout();
+    let _ = stdout.write_all(b"\x1b_Ga=d,d=a\x1b\\");
+    let _ = stdout.flush();
+}
+
+pub fn draw_kitty_graphics(raw_escape: &[u8], col: u16, row: u16) {
+    use std::io::Write;
+    let mut stdout = std::io::stdout();
+    let _ = write!(stdout, "\x1b[{};{}H", row + 1, col + 1);
+    let _ = stdout.write_all(raw_escape);
+    let _ = stdout.write_all(b"\x1b[?25l");
+    let _ = stdout.flush();
+}
+
 pub fn render_poster_to_text(
     path: &Path,
     width: u16,
@@ -233,5 +341,23 @@ mod tests {
         let (w3, h3) = calculate_poster_dimensions_for_panel(60, 48);
         assert_eq!(h3, 26);
         assert_eq!(w3, 35);
+    }
+
+    #[test]
+    fn test_calculate_poster_screen_rect() {
+        let rect = calculate_poster_screen_rect(120, 40);
+        assert!(rect.width >= 16);
+        assert!(rect.height >= 10);
+        assert!(rect.x >= 1);
+        assert!(rect.y >= 1);
+    }
+
+    #[test]
+    fn test_is_kitty_graphics_supported() {
+        // If KITTY_WINDOW_ID is set (like in this session), returns true
+        let supported = is_kitty_graphics_supported();
+        if std::env::var("KITTY_WINDOW_ID").is_ok() {
+            assert!(supported);
+        }
     }
 }

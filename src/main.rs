@@ -118,6 +118,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Set up crash-safe panic hook
     let default_panic = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
+        crate::ui::poster::clear_kitty_graphics();
         let _ = disable_raw_mode();
         let _ = crossterm::execute!(stdout(), LeaveAlternateScreen);
         default_panic(panic_info);
@@ -184,6 +185,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         terminal.draw(|f| ui::render_ui(f, &app))?;
 
+        let (term_w, term_h) = terminal.size().map(|s| (s.width, s.height)).unwrap_or((120, 40));
+        app.render_kitty_poster_if_needed(term_w, term_h);
+
         tokio::select! {
             _ = tick_interval.tick() => {}
             Some(Ok(event)) = reader.next() => {
@@ -194,6 +198,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                     Event::Resize(_, _) => {
+                        crate::ui::poster::clear_kitty_graphics();
+                        app.kitty_poster_dirty = true;
+                        app.had_kitty_poster_drawn = false;
                         app.update_poster().await;
                     }
                     _ => {}
@@ -204,6 +211,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
+
+    // Clean up any Kitty protocol raster graphics before switching terminal screen
+    crate::ui::poster::clear_kitty_graphics();
 
     // Restore terminal
     disable_raw_mode()?;
