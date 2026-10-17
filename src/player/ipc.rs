@@ -95,6 +95,9 @@ impl MpvController {
             cmd.arg("--sub-fix-timing=yes");
             cmd.arg("--demuxer-mkv-subtitle-preroll=yes");
         }
+        if cfg.sub_delay.abs() > 0.001 {
+            cmd.arg(format!("--sub-delay={:.1}", cfg.sub_delay));
+        }
         cmd.arg(format!("--hwdec={}", cfg.hwdec));
 
         // Explicit referrer and user-agent for CDN and HLS segments

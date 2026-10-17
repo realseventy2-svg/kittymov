@@ -7,11 +7,13 @@ use ratatui::Frame;
 use super::theme::Theme;
 use crate::subtitles::SubtitleLanguageGroup;
 
+#[allow(clippy::too_many_arguments)]
 pub fn render_subtitle_modal(
     f: &mut Frame,
     area: Rect,
     target_title: &str,
     current_lang: &str,
+    subtitle_source: &str,
     options: &[SubtitleLanguageGroup],
     selected_idx: usize,
     is_loading: bool,
@@ -54,6 +56,12 @@ pub fn render_subtitle_modal(
     f.render_widget(modal_block, popup_area);
 
     // 1. Header subtitle
+    let source_label = match subtitle_source.to_lowercase().as_str() {
+        "provider" => "Provider Native Only",
+        "opensubtitles" => "OpenSubtitles Only",
+        "both" | "all" => "Both (All Tracks)",
+        _ => "Auto (Provider + OpenSubtitles)",
+    };
     let desc = Line::from(vec![
         Span::styled(
             format!("Media: {}  ", target_title),
@@ -62,8 +70,10 @@ pub fn render_subtitle_modal(
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
-            "• Source: OpenSubtitles.org CDN",
-            Style::default().fg(Theme::TEXT_MUTED),
+            format!("• Mode: {}", source_label),
+            Style::default()
+                .fg(Theme::ACCENT_GOLD)
+                .add_modifier(Modifier::BOLD),
         ),
     ]);
     f.render_widget(Paragraph::new(desc), inner_chunks[0]);
@@ -158,7 +168,7 @@ pub fn render_subtitle_modal(
 
     // 3. Hotkey footer
     let hints = Line::from(vec![Span::styled(
-        " [Enter] Select Language   [↑/↓] Navigate   [Esc] Close ",
+        " [Enter] Select Language   [s] Cycle Source   [↑/↓] Navigate   [Esc] Close ",
         Style::default().fg(Theme::TEXT_MUTED),
     )]);
     let footer_p = Paragraph::new(hints)

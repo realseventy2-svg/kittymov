@@ -108,6 +108,42 @@ struct TmdbSeasonResponse {
     episodes: Vec<RawEpisode>,
 }
 
+#[derive(Deserialize)]
+struct EpisodeGroupSummary {
+    id: String,
+    name: String,
+    #[serde(default)]
+    #[serde(rename = "type")]
+    group_type: i32,
+}
+
+#[derive(Deserialize)]
+struct EpisodeGroupsResponse {
+    results: Vec<EpisodeGroupSummary>,
+}
+
+#[derive(Deserialize)]
+struct GroupEpisode {
+    name: Option<String>,
+    overview: Option<String>,
+    air_date: Option<String>,
+    runtime: Option<i32>,
+    order: Option<i32>,
+    episode_number: Option<i32>,
+}
+
+#[derive(Deserialize)]
+struct GroupSeason {
+    name: String,
+    order: i32,
+    episodes: Vec<GroupEpisode>,
+}
+
+#[derive(Deserialize)]
+struct EpisodeGroupDetails {
+    groups: Vec<GroupSeason>,
+}
+
 pub struct TmdbClient {
     client: Client,
     api_key: String,
@@ -334,9 +370,25 @@ impl TmdbClient {
         })
     }
 
+    #[allow(dead_code)]
     pub async fn get_tv_details(
         &self,
         tmdb_id: i64,
+    ) -> Result<
+        (
+            MediaItem,
+            Vec<TvSeason>,
+            Option<HashMap<i32, Vec<TvEpisode>>>,
+        ),
+        String,
+    > {
+        self.get_tv_details_with_order(tmdb_id, "broadcast").await
+    }
+
+    pub async fn get_tv_details_with_order(
+        &self,
+        tmdb_id: i64,
+        order: &str,
     ) -> Result<
         (
             MediaItem,
@@ -371,7 +423,108 @@ impl TmdbClient {
             .take(4)
             .collect();
 
-        // Use canonical broadcast seasons (aligned with VixSrc, LookMovie, OpenSubtitles, and TV airings)
+        if order.eq_ignore_ascii_case("streaming") {
+            // Check if there is an episode group matching Streaming or Digital Order
+            let groups_url = format!(
+                "{}/tv/{}/episode_groups?api_key={}",
+                self.base_url, tmdb_id, self.api_key
+            );
+            let mut chosen_group_id = None;
+            if let Ok(resp) = self.client.get(&groups_url).send().await {
+                if let Ok(groups_data) = resp.json::<EpisodeGroupsResponse>().await {
+                    // Priority 1: group with name containing "streaming"
+                    for g in &groups_data.results {
+                        if g.name.to_lowercase().contains("streaming") {
+                            chosen_group_id = Some(g.id.clone());
+                            break;
+                        }
+                    }
+                    // Priority 2: group with name containing "digital" or type == 4
+                    if chosen_group_id.is_none() {
+                        for g in &groups_data.results {
+                            if g.name.to_lowercase().contains("digital") || g.group_type == 4 {
+                                chosen_group_id = Some(g.id.clone());
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // If a streaming/digital group was found, fetch it
+            if let Some(group_id) = chosen_group_id {
+                let group_url = format!(
+                    "{}/tv/episode_group/{}?api_key={}",
+                    self.base_url, group_id, self.api_key
+                );
+                if let Ok(resp) = self.client.get(&group_url).send().await {
+                    if let Ok(group_data) = resp.json::<EpisodeGroupDetails>().await {
+                        let mut seasons = Vec::new();
+                        let mut season_map = HashMap::new();
+
+                        let mut sorted_groups = group_data.groups;
+                        sorted_groups.sort_by_key(|g| g.order);
+
+                        for g in sorted_groups {
+                            if g.episodes.is_empty() || g.name.to_lowercase().contains("specials") {
+                                continue;
+                            }
+                            let s_num = if g.order > 0 {
+                                g.order
+                            } else {
+                                (seasons.len() + 1) as i32
+                            };
+                            seasons.push(TvSeason {
+                                season_number: s_num,
+                                name: g.name.clone(),
+                                episode_count: g.episodes.len() as i32,
+                            });
+
+                            let mut eps = Vec::new();
+                            for ep in g.episodes {
+                                let ep_num =
+                                    ep.order.map(|o| o + 1).or(ep.episode_number).unwrap_or(1);
+                                let dur = ep
+                                    .runtime
+                                    .map(|r| format!("{}m", r))
+                                    .unwrap_or_else(|| "24m".to_string());
+                                eps.push(TvEpisode {
+                                    episode_number: ep_num,
+                                    name: ep.name.unwrap_or_else(|| format!("Episode {}", ep_num)),
+                                    overview: ep.overview.unwrap_or_default(),
+                                    air_date: ep.air_date.unwrap_or_else(|| "—".to_string()),
+                                    duration: dur,
+                                });
+                            }
+                            season_map.insert(s_num, eps);
+                        }
+
+                        if !seasons.is_empty() {
+                            let item = MediaItem {
+                                tmdb_id: d.id,
+                                media_type: "tv".to_string(),
+                                title: d.name,
+                                year,
+                                rating: (d.vote_average.unwrap_or(0.0) * 10.0).round() / 10.0,
+                                poster_path: d.poster_path.unwrap_or_default(),
+                                overview: d.overview.unwrap_or_default(),
+                                genres: if genres.is_empty() {
+                                    "TV Series".to_string()
+                                } else {
+                                    genres
+                                },
+                                duration_str: format!("{} Seasons", seasons.len()),
+                                status: d.status.unwrap_or_else(|| "Series".to_string()),
+                                episodes_count: d.number_of_episodes,
+                            };
+                            return Ok((item, seasons, Some(season_map)));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Canonical broadcast seasons
         let mut seasons = Vec::new();
         if let Some(raw_seasons) = d.seasons {
             for s in raw_seasons {
@@ -550,5 +703,24 @@ mod tests {
         assert_eq!(s3_eps[1].name, "Gem Drill");
         assert_eq!(s3_eps[2].episode_number, 3);
         assert_eq!(s3_eps[2].name, "Same Old World");
+    }
+
+    #[tokio::test]
+    async fn test_steven_universe_season_3_streaming_order() {
+        let client = TmdbClient::new("653bb8af90162bd98fc7ee32bcbbfb3d");
+        let (item, seasons, episodes_map) = client
+            .get_tv_details_with_order(61175, "streaming")
+            .await
+            .expect("Failed to fetch SU details with streaming order");
+        assert_eq!(item.title, "Steven Universe");
+        assert!(
+            episodes_map.is_some(),
+            "Streaming order should populate episode groups map"
+        );
+        let map = episodes_map.unwrap();
+        let s3 = map.get(&3).expect("Season 3 should exist");
+        assert_eq!(s3[0].episode_number, 1);
+        assert_eq!(s3[0].name, "Steven's Birthday");
+        assert_eq!(seasons[2].episode_count, 28);
     }
 }

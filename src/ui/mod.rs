@@ -96,6 +96,7 @@ pub fn render_ui(f: &mut Frame, app: &App) {
             modal_state.selected_episode_idx,
             app.cfg.auto_play_next,
             &app.cfg.audio_mode,
+            &app.cfg.episode_order,
         );
     }
 
@@ -118,6 +119,7 @@ pub fn render_ui(f: &mut Frame, app: &App) {
             size,
             &sub_modal.target_title,
             &app.cfg.sub_language,
+            &app.cfg.subtitle_source,
             &sub_modal.options,
             sub_modal.selected_idx,
             sub_modal.is_loading,

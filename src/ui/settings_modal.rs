@@ -591,6 +591,14 @@ fn get_category_rows(
                 "Automatically resume playback of your most recently watched movie or series episode on launch.",
             ),
             (
+                "TV Episode Order Mode",
+                SettingWidget::Select(match cfg.episode_order.to_lowercase().as_str() {
+                    "streaming" => "Streaming / Production (VixSrc Order)".to_string(),
+                    _ => "Broadcast Order (Canonical / LookMovie)".to_string(),
+                }),
+                "TV episode order scheme. Broadcast matches canonical TV airings & LookMovie; Streaming matches VixSrc.",
+            ),
+            (
                 "Player Engine",
                 SettingWidget::Info("mpv (External High-Performance Player)".to_string()),
                 "High-performance video renderer powering smooth playback, caching, and subtitle sync.",
@@ -619,6 +627,21 @@ fn get_category_rows(
                 "Default Subtitle Language",
                 SettingWidget::Select(format!("{} ({})", cfg.sub_language, lang_name(&cfg.sub_language))),
                 "Preferred subtitle language automatically displayed when streaming media.",
+            ),
+            (
+                "Preferred Subtitle Source",
+                SettingWidget::Select(match cfg.subtitle_source.to_lowercase().as_str() {
+                    "provider" => "Provider Native Only (LookMovie .vtt)".to_string(),
+                    "opensubtitles" => "OpenSubtitles.org Only".to_string(),
+                    "both" | "all" => "Both (Provider Native + OpenSubtitles)".to_string(),
+                    _ => "Auto (Provider First, then OpenSubtitles)".to_string(),
+                }),
+                "Choose subtitle origin. Provider Native uses pre-synced provider tracks; OpenSubtitles offers broader languages.",
+            ),
+            (
+                "Subtitle Timing Offset",
+                SettingWidget::Select(format!("{:+.1}s (Use z/Z in MPV)", cfg.sub_delay)),
+                "Default timing offset applied to external subtitles. Use [z] and [Z] inside MPV for on-the-fly +/-100ms sync.",
             ),
             (
                 "Auto-Play Next Episode",
@@ -650,9 +673,19 @@ fn get_category_rows(
                 "Streaming server query order. Auto Fallback tries VixSrc first, then seamlessly switches to LookMovie.",
             ),
             (
+                "Subtitle Source Strategy",
+                SettingWidget::Select(match cfg.subtitle_source.to_lowercase().as_str() {
+                    "provider" => "Provider Native (LookMovie)".to_string(),
+                    "opensubtitles" => "OpenSubtitles.org".to_string(),
+                    "both" | "all" => "Both (All Tracks Loaded)".to_string(),
+                    _ => "Auto (Best Match First)".to_string(),
+                }),
+                "Controls whether subtitles are pulled from LookMovie's CDN or fetched externally from OpenSubtitles.",
+            ),
+            (
                 "Subtitle Augmentation",
                 SettingWidget::Toggle(cfg.subtitle_augmentation),
-                "Queries LookMovie for subtitle tracks when the primary stream lacks requested subtitles.",
+                "Queries OpenSubtitles for missing subtitle tracks when provider streams lack requested languages.",
             ),
             (
                 "Network Timeout",

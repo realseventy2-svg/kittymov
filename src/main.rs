@@ -340,6 +340,9 @@ async fn handle_key_event(
             KeyCode::Enter => {
                 app.subtitle_modal_confirm();
             }
+            KeyCode::Char('s') => {
+                app.cycle_subtitle_source();
+            }
             KeyCode::Char('d') => {
                 app.toggle_audio_mode();
             }
@@ -424,6 +427,9 @@ async fn handle_key_event(
             }
             KeyCode::Char('s') => {
                 app.open_provider_modal_for_selected();
+            }
+            KeyCode::Char('o') => {
+                app.toggle_episode_order().await;
             }
             KeyCode::Char('t') => {
                 app.open_subtitle_modal().await;

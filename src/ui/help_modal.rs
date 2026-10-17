@@ -168,6 +168,20 @@ pub fn render_help_modal(f: &mut Frame, area: Rect) {
         ),
     ]));
     lines.push(Line::from(vec![
+        Span::styled("  [o]           ", Style::default().fg(Theme::ACCENT_GOLD)),
+        Span::styled(
+            "Toggle TV Episode Order (Broadcast vs Streaming/VixSrc)",
+            Style::default().fg(Theme::TEXT_BODY),
+        ),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("  [s] in Subs   ", Style::default().fg(Theme::ACCENT_GOLD)),
+        Span::styled(
+            "Cycle Subtitle Source mode (Provider, OpenSubtitles, Both)",
+            Style::default().fg(Theme::TEXT_BODY),
+        ),
+    ]));
+    lines.push(Line::from(vec![
         Span::styled("  [Esc]         ", Style::default().fg(Theme::ACCENT_GOLD)),
         Span::styled(
             "Close modal and return to previous view",

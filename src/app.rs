@@ -103,9 +103,9 @@ impl SettingsCategory {
 
     pub fn item_count(&self) -> usize {
         match self {
-            SettingsCategory::General => 4,
-            SettingsCategory::Playback => 5,
-            SettingsCategory::Providers => 3,
+            SettingsCategory::General => 5,
+            SettingsCategory::Playback => 7,
+            SettingsCategory::Providers => 4,
             SettingsCategory::Appearance => 3,
             SettingsCategory::Storage => 5,
         }
@@ -177,7 +177,7 @@ pub fn format_bytes(bytes: u64) -> String {
 
 pub fn get_all_settings_metadata(cfg: &Config) -> Vec<SettingMatch> {
     vec![
-        // General (0..4)
+        // General (0..5)
         SettingMatch {
             category: SettingsCategory::General,
             category_idx: 0,
@@ -203,6 +203,17 @@ pub fn get_all_settings_metadata(cfg: &Config) -> Vec<SettingMatch> {
             category: SettingsCategory::General,
             category_idx: 0,
             item_idx: 2,
+            label: "TV Episode Order Mode",
+            value_str: match cfg.episode_order.to_lowercase().as_str() {
+                "streaming" => "Streaming / Production (VixSrc Order)".to_string(),
+                _ => "Broadcast Order (Canonical / LookMovie)".to_string(),
+            },
+            description: "Season and episode ordering scheme. Broadcast matches canonical TV airings & LookMovie; Streaming matches VixSrc.",
+        },
+        SettingMatch {
+            category: SettingsCategory::General,
+            category_idx: 0,
+            item_idx: 3,
             label: "Player Engine",
             value_str: "mpv (External High-Performance Player)".to_string(),
             description: "Hardware-accelerated player engine powering video playback and subtitle sync.",
@@ -210,13 +221,13 @@ pub fn get_all_settings_metadata(cfg: &Config) -> Vec<SettingMatch> {
         SettingMatch {
             category: SettingsCategory::General,
             category_idx: 0,
-            item_idx: 3,
+            item_idx: 4,
             label: "TMDB Metadata API",
             value_str: "Connected (v3 API Active)".to_string(),
             description: "Global metadata provider supplying artwork, cast details, episode titles, and summaries.",
         },
 
-        // Playback (0..5)
+        // Playback (0..7)
         SettingMatch {
             category: SettingsCategory::Playback,
             category_idx: 1,
@@ -248,6 +259,27 @@ pub fn get_all_settings_metadata(cfg: &Config) -> Vec<SettingMatch> {
             category: SettingsCategory::Playback,
             category_idx: 1,
             item_idx: 3,
+            label: "Preferred Subtitle Source",
+            value_str: match cfg.subtitle_source.to_lowercase().as_str() {
+                "provider" => "Provider Native Only (LookMovie .vtt)".to_string(),
+                "opensubtitles" => "OpenSubtitles.org Only".to_string(),
+                "both" | "all" => "Both (Provider Native + OpenSubtitles)".to_string(),
+                _ => "Auto (Provider First, then OpenSubtitles)".to_string(),
+            },
+            description: "Preferred origin for subtitles. Provider Native uses pre-synced provider tracks; OpenSubtitles offers broader languages.",
+        },
+        SettingMatch {
+            category: SettingsCategory::Playback,
+            category_idx: 1,
+            item_idx: 4,
+            label: "Subtitle Timing Offset",
+            value_str: format!("{:+.1}s (Use z/Z in MPV)", cfg.sub_delay),
+            description: "Default timing offset applied to subtitles. Use [z] and [Z] inside MPV for on-the-fly +/-100ms sync.",
+        },
+        SettingMatch {
+            category: SettingsCategory::Playback,
+            category_idx: 1,
+            item_idx: 5,
             label: "Auto-Play Next Episode",
             value_str: if cfg.auto_play_next { "ON (Seamless background prefetch)".to_string() } else { "OFF".to_string() },
             description: "Seamlessly start the next episode upon reaching the conclusion of current episode.",
@@ -255,7 +287,7 @@ pub fn get_all_settings_metadata(cfg: &Config) -> Vec<SettingMatch> {
         SettingMatch {
             category: SettingsCategory::Playback,
             category_idx: 1,
-            item_idx: 4,
+            item_idx: 6,
             label: "Hardware Decoding (hwdec)",
             value_str: match cfg.hwdec.as_str() {
                 "auto" => "auto (MPV auto detection)".to_string(),
@@ -269,7 +301,7 @@ pub fn get_all_settings_metadata(cfg: &Config) -> Vec<SettingMatch> {
             description: "GPU video acceleration profile passed to mpv for efficient, stutter-free playback.",
         },
 
-        // Providers (0..3)
+        // Providers (0..4)
         SettingMatch {
             category: SettingsCategory::Providers,
             category_idx: 2,
@@ -286,14 +318,27 @@ pub fn get_all_settings_metadata(cfg: &Config) -> Vec<SettingMatch> {
             category: SettingsCategory::Providers,
             category_idx: 2,
             item_idx: 1,
-            label: "Subtitle Augmentation",
-            value_str: if cfg.subtitle_augmentation { "ON (Auto-pull from LookMovie)".to_string() } else { "OFF".to_string() },
-            description: "When enabled, queries LookMovie subtitle tracks if primary stream lacks requested subtitles.",
+            label: "Subtitle Source Strategy",
+            value_str: match cfg.subtitle_source.to_lowercase().as_str() {
+                "provider" => "Provider Native (LookMovie)".to_string(),
+                "opensubtitles" => "OpenSubtitles.org".to_string(),
+                "both" | "all" => "Both (All Tracks Loaded)".to_string(),
+                _ => "Auto (Best Match First)".to_string(),
+            },
+            description: "Controls whether subtitles are pulled from LookMovie's CDN or fetched externally from OpenSubtitles.",
         },
         SettingMatch {
             category: SettingsCategory::Providers,
             category_idx: 2,
             item_idx: 2,
+            label: "Subtitle Augmentation",
+            value_str: if cfg.subtitle_augmentation { "ON (Auto-pull from LookMovie)".to_string() } else { "OFF".to_string() },
+            description: "When enabled, queries OpenSubtitles tracks if primary stream lacks requested subtitles.",
+        },
+        SettingMatch {
+            category: SettingsCategory::Providers,
+            category_idx: 2,
+            item_idx: 3,
             label: "Network Timeout",
             value_str: "10 seconds (Auto Failover)".to_string(),
             description: "Maximum duration kitty-mov waits for a provider response before failing over.",
@@ -701,8 +746,10 @@ impl App {
 
     pub async fn open_episode_modal(&mut self, item: MediaItem) {
         self.status_message = format!("Loading seasons for {}...", item.title);
-        if let Ok((_details, seasons, stream_episodes_map)) =
-            self.tmdb.get_tv_details(item.tmdb_id).await
+        if let Ok((_details, seasons, stream_episodes_map)) = self
+            .tmdb
+            .get_tv_details_with_order(item.tmdb_id, &self.cfg.episode_order)
+            .await
         {
             let first_season = seasons.first().map(|s| s.season_number).unwrap_or(1);
             let episodes = if let Some(ref map) = stream_episodes_map {
@@ -725,6 +772,51 @@ impl App {
             self.status_message = "Opened Episode Guide".to_string();
         } else {
             self.status_message = "Failed to load TV seasons".to_string();
+        }
+    }
+
+    pub fn cycle_subtitle_source(&mut self) {
+        let sources = ["auto", "provider", "opensubtitles", "both"];
+        self.cfg.subtitle_source = cycle_list(&sources, &self.cfg.subtitle_source, true);
+        let _ = self.cfg.save();
+        let label = match self.cfg.subtitle_source.as_str() {
+            "provider" => "Provider Native Only",
+            "opensubtitles" => "OpenSubtitles Only",
+            "both" | "all" => "Both (All Tracks)",
+            _ => "Auto (Best Match)",
+        };
+        self.status_message = format!("Subtitle Source: {}", label);
+    }
+
+    pub async fn toggle_episode_order(&mut self) {
+        if self.cfg.episode_order.to_lowercase() == "streaming" {
+            self.cfg.episode_order = "broadcast".to_string();
+            self.status_message = "Episode Order: Broadcast (Canonical / LookMovie)".to_string();
+        } else {
+            self.cfg.episode_order = "streaming".to_string();
+            self.status_message = "Episode Order: Streaming / Production (VixSrc)".to_string();
+        }
+        let _ = self.cfg.save();
+
+        if let Some(ref modal) = self.episode_modal {
+            let item = modal.series.clone();
+            let curr_s_idx = modal.selected_season_idx;
+            self.open_episode_modal(item).await;
+            if let Some(ref mut new_modal) = self.episode_modal {
+                if curr_s_idx < new_modal.seasons.len() {
+                    new_modal.selected_season_idx = curr_s_idx;
+                    let season_num = new_modal.seasons[curr_s_idx].season_number;
+                    if let Some(ref map) = new_modal.all_season_episodes {
+                        new_modal.episodes = map.get(&season_num).cloned().unwrap_or_default();
+                    } else if let Ok(eps) = self
+                        .tmdb
+                        .get_season_episodes(new_modal.series.tmdb_id, season_num)
+                        .await
+                    {
+                        new_modal.episodes = eps;
+                    }
+                }
+            }
         }
     }
 
@@ -869,6 +961,11 @@ impl App {
                     1 => {
                         self.cfg.resume_on_startup = !self.cfg.resume_on_startup;
                     }
+                    2 => {
+                        let orders = ["broadcast", "streaming"];
+                        self.cfg.episode_order =
+                            cycle_list(&orders, &self.cfg.episode_order, forward);
+                    }
                     _ => {}
                 },
                 SettingsCategory::Playback => match s.item_idx {
@@ -893,9 +990,19 @@ impl App {
                         self.cfg.sub_language = cycle_list(&langs, &self.cfg.sub_language, forward);
                     }
                     3 => {
-                        self.cfg.auto_play_next = !self.cfg.auto_play_next;
+                        let sources = ["auto", "provider", "opensubtitles", "both"];
+                        self.cfg.subtitle_source =
+                            cycle_list(&sources, &self.cfg.subtitle_source, forward);
                     }
                     4 => {
+                        let delta = if forward { 0.1 } else { -0.1 };
+                        let next = (self.cfg.sub_delay + delta).clamp(-10.0, 10.0);
+                        self.cfg.sub_delay = (next * 10.0).round() / 10.0;
+                    }
+                    5 => {
+                        self.cfg.auto_play_next = !self.cfg.auto_play_next;
+                    }
+                    6 => {
                         let hwdecs = ["auto", "auto-safe", "vaapi", "nvdec", "videotoolbox", "no"];
                         self.cfg.hwdec = cycle_list(&hwdecs, &self.cfg.hwdec, forward);
                     }
@@ -908,6 +1015,11 @@ impl App {
                             cycle_list(&providers, &self.cfg.preferred_provider, forward);
                     }
                     1 => {
+                        let sources = ["auto", "provider", "opensubtitles", "both"];
+                        self.cfg.subtitle_source =
+                            cycle_list(&sources, &self.cfg.subtitle_source, forward);
+                    }
+                    2 => {
                         self.cfg.subtitle_augmentation = !self.cfg.subtitle_augmentation;
                     }
                     _ => {}
@@ -1014,16 +1126,20 @@ impl App {
                 SettingsCategory::General => {
                     self.cfg.default_tab = "movies".to_string();
                     self.cfg.resume_on_startup = false;
+                    self.cfg.episode_order = "broadcast".to_string();
                 }
                 SettingsCategory::Playback => {
                     self.cfg.audio_mode = "sub".to_string();
                     self.cfg.audio_language = "eng".to_string();
                     self.cfg.sub_language = "eng".to_string();
+                    self.cfg.subtitle_source = "auto".to_string();
+                    self.cfg.sub_delay = 0.0;
                     self.cfg.auto_play_next = true;
                     self.cfg.hwdec = "auto".to_string();
                 }
                 SettingsCategory::Providers => {
                     self.cfg.preferred_provider = "auto".to_string();
+                    self.cfg.subtitle_source = "auto".to_string();
                     self.cfg.subtitle_augmentation = true;
                 }
                 SettingsCategory::Appearance => {
@@ -1327,8 +1443,19 @@ impl App {
             .await
         {
             Ok(mut stream) => {
-                // Augment with dedicated Subtitle Provider (OpenSubtitles)
-                if stream.subtitles.is_empty() || self.cfg.subtitle_augmentation {
+                // Subtitle source selection (provider native vs OpenSubtitles vs both vs auto)
+                let sub_src = self.cfg.subtitle_source.to_lowercase();
+                let should_fetch_ext = match sub_src.as_str() {
+                    "provider" => stream.subtitles.is_empty() && self.cfg.subtitle_augmentation,
+                    "opensubtitles" | "both" | "all" => true,
+                    _ => stream.subtitles.is_empty() || self.cfg.subtitle_augmentation,
+                };
+
+                if sub_src == "opensubtitles" {
+                    stream.subtitles.clear();
+                }
+
+                if should_fetch_ext {
                     self.status_message = format!(
                         "Fetching subtitles for '{}' [{}]...",
                         title, self.cfg.sub_language
@@ -1441,8 +1568,19 @@ impl App {
             .await
         {
             Ok(mut stream) => {
-                // Augment with dedicated Subtitle Provider (OpenSubtitles)
-                if stream.subtitles.is_empty() || self.cfg.subtitle_augmentation {
+                // Subtitle source selection (provider native vs OpenSubtitles vs both vs auto)
+                let sub_src = self.cfg.subtitle_source.to_lowercase();
+                let should_fetch_ext = match sub_src.as_str() {
+                    "provider" => stream.subtitles.is_empty() && self.cfg.subtitle_augmentation,
+                    "opensubtitles" | "both" | "all" => true,
+                    _ => stream.subtitles.is_empty() || self.cfg.subtitle_augmentation,
+                };
+
+                if sub_src == "opensubtitles" {
+                    stream.subtitles.clear();
+                }
+
+                if should_fetch_ext {
                     self.status_message = format!(
                         "Fetching subtitles for {} [{}]...",
                         display_title, self.cfg.sub_language
@@ -1770,9 +1908,9 @@ mod tests {
     #[test]
     fn test_settings_categories_and_counts() {
         assert_eq!(SettingsCategory::ALL.len(), 5);
-        assert_eq!(SettingsCategory::General.item_count(), 4);
-        assert_eq!(SettingsCategory::Playback.item_count(), 5);
-        assert_eq!(SettingsCategory::Providers.item_count(), 3);
+        assert_eq!(SettingsCategory::General.item_count(), 5);
+        assert_eq!(SettingsCategory::Playback.item_count(), 7);
+        assert_eq!(SettingsCategory::Providers.item_count(), 4);
         assert_eq!(SettingsCategory::Appearance.item_count(), 3);
         assert_eq!(SettingsCategory::Storage.item_count(), 5);
     }
@@ -1845,6 +1983,11 @@ mod tests {
         app.settings_change_value(true);
         assert!(app.cfg.resume_on_startup);
 
+        app.settings_modal.as_mut().unwrap().item_idx = 2; // TV Episode Order
+        assert_eq!(app.cfg.episode_order, "broadcast");
+        app.settings_change_value(true);
+        assert_eq!(app.cfg.episode_order, "streaming");
+
         // Playback Category (category_idx = 1)
         app.settings_modal.as_mut().unwrap().category_idx = 1;
         app.settings_modal.as_mut().unwrap().item_idx = 0; // Audio mode
@@ -1852,7 +1995,17 @@ mod tests {
         app.settings_change_value(true);
         assert_ne!(app.cfg.audio_mode, initial_mode);
 
-        app.settings_modal.as_mut().unwrap().item_idx = 3; // Auto-play next
+        app.settings_modal.as_mut().unwrap().item_idx = 3; // Subtitle Source
+        assert_eq!(app.cfg.subtitle_source, "auto");
+        app.settings_change_value(true);
+        assert_eq!(app.cfg.subtitle_source, "provider");
+
+        app.settings_modal.as_mut().unwrap().item_idx = 4; // Subtitle Delay
+        assert_eq!(app.cfg.sub_delay, 0.0);
+        app.settings_change_value(true);
+        assert!((app.cfg.sub_delay - 0.1).abs() < 0.001);
+
+        app.settings_modal.as_mut().unwrap().item_idx = 5; // Auto-play next
         let initial_auto = app.cfg.auto_play_next;
         app.settings_change_value(true);
         assert_eq!(app.cfg.auto_play_next, !initial_auto);
