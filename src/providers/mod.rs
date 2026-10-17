@@ -1,3 +1,4 @@
+pub mod hianime;
 pub mod lookmovie;
 pub mod vixsrc;
 
@@ -53,8 +54,8 @@ pub trait Provider: Send + Sync {
 }
 
 /// ProviderManager orchestrates multi-provider stream resolution with automatic fallback.
-/// If the primary provider (VixSrc) fails or 404s, it smoothly attempts the secondary
-/// provider (LookMovie) so playback never abruptly fails for the user.
+/// If the primary provider (VixSrc) fails or 404s, it smoothly attempts secondary providers
+/// (HiAnime for anime, LookMovie for movies/shows) so playback never abruptly fails for the user.
 pub struct ProviderManager {
     providers: Vec<Arc<dyn Provider>>,
 }
@@ -65,6 +66,7 @@ impl ProviderManager {
         Self {
             providers: vec![
                 Arc::new(vixsrc::VixSrcProvider::new()),
+                Arc::new(hianime::HiAnimeProvider::new()),
                 Arc::new(lookmovie::LookMovieProvider::new()),
             ],
         }
@@ -77,19 +79,22 @@ impl ProviderManager {
 
     pub fn with_preference(preferred: &str) -> Self {
         let vix = Arc::new(vixsrc::VixSrcProvider::new());
+        let hianime = Arc::new(hianime::HiAnimeProvider::new());
         let look = Arc::new(lookmovie::LookMovieProvider::new());
 
         let providers: Vec<Arc<dyn Provider>> = match preferred.to_lowercase().as_str() {
-            "lookmovie" => vec![look, vix],
+            "hianime" => vec![hianime, vix, look],
+            "lookmovie" => vec![look, vix, hianime],
             "vixsrc_only" => vec![vix],
+            "hianime_only" => vec![hianime],
             "lookmovie_only" => vec![look],
-            _ => vec![vix, look],
+            _ => vec![vix, hianime, look],
         };
 
         Self { providers }
     }
 
-    /// Resolves using a specific provider by identifier ("auto", "vixsrc", "lookmovie").
+    /// Resolves using a specific provider by identifier ("auto", "vixsrc", "hianime", "lookmovie").
     /// If "auto", performs full fallback across configured providers.
     #[allow(dead_code)]
     pub async fn resolve_with_choice(
@@ -108,7 +113,25 @@ impl ProviderManager {
         quality: Option<&str>,
     ) -> Result<StreamCandidate, String> {
         let key = choice.to_lowercase();
-        let mut candidate = if key.contains("vixsrc") {
+        let mut candidate = if key.contains("hianime") {
+            let mut res = None;
+            for provider in &self.providers {
+                if provider.name().to_lowercase().contains("hianime") {
+                    res = Some(provider.resolve(req).await?);
+                    break;
+                }
+            }
+            let mut cand = if let Some(c) = res {
+                c
+            } else {
+                let hi = hianime::HiAnimeProvider::new();
+                hi.resolve_with_quality(req, quality, None).await?
+            };
+            if let Some(q) = quality {
+                cand.quality = Some(q.to_string());
+            }
+            cand
+        } else if key.contains("vixsrc") {
             let mut res = None;
             for provider in &self.providers {
                 if provider.name().to_lowercase().contains("vixsrc") {
@@ -159,6 +182,7 @@ impl ProviderManager {
         // If candidate has no external subtitles, opportunistically augment from LookMovie with a short timeout
         if candidate.subtitles.is_empty()
             && !candidate.provider_name.to_lowercase().contains("lookmovie")
+            && !candidate.provider_name.to_lowercase().contains("hianime")
         {
             for provider in &self.providers {
                 if provider.name().to_lowercase().contains("lookmovie") {
@@ -196,6 +220,7 @@ impl ProviderManager {
                 Ok(mut candidate) => {
                     if candidate.subtitles.is_empty()
                         && !candidate.provider_name.to_lowercase().contains("lookmovie")
+                        && !candidate.provider_name.to_lowercase().contains("hianime")
                     {
                         for p in &self.providers {
                             if p.name().to_lowercase().contains("lookmovie") {
@@ -411,5 +436,29 @@ mod tests {
 
         let auto_res = mgr.resolve_with_choice("auto", &req).await.unwrap();
         assert_eq!(auto_res.provider_name, "vixsrc_server");
+    }
+
+    #[tokio::test]
+    async fn test_hianime_live_resolve_anime() {
+        let provider = hianime::HiAnimeProvider::new();
+        let req = MediaRequest {
+            tmdb_id: 1111,
+            media_type: "tv".to_string(),
+            season: Some(1),
+            episode: Some(1),
+            title: "Uma Musume: Cinderella Gray".to_string(),
+            year: Some("2025".to_string()),
+        };
+
+        let res = provider.resolve(&req).await;
+        println!("HiAnime Cinderella Gray result: {:?}", res);
+        assert!(
+            res.is_ok(),
+            "HiAnime should resolve Cinderella Gray: {:?}",
+            res.err()
+        );
+        let candidate = res.unwrap();
+        assert!(candidate.stream_url.contains(".m3u8"));
+        assert!(candidate.provider_name.contains("HiAnime"));
     }
 }
