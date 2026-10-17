@@ -8,10 +8,10 @@
  █████╔╝ ██║   ██║      ██║    ╚████╔╝ ██╔████╔██║██║   ██║██║   ██║
  ██╔═██╗ ██║   ██║      ██║     ╚██╔╝  ██║╚██╔╝██║██║   ██║╚██╗ ██╔╝
  ██║  ██╗██║   ██║      ██║      ██║   ██║ ╚═╝ ██║╚██████╔╝ ╚████╔╝ 
- ╚═╝  ╚═╝╚═╝   ╚═╝      ╚═╝      ╚═╝   ╚═╝     ╚═╝ ╚═════╝   ╚═══╝  
+ ╚═╝  ╚═╝╚═╝   ╚═╝     ╚═╝      ╚═╝   ╚═╝    ╚═╝ ╚═════╝   ╚═══╝  
 ```
 
-### A keyboard-driven terminal movie & TV streaming app for Linux
+### A TUI-based Movie & TV-Series Streaming Application for Linux
 
 [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange?logo=rust)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
