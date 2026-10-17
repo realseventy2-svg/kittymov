@@ -3,7 +3,7 @@
 <div align="center">
 
 ```
- ██╗  ██╗██╗████████╗████████╗██╗   ██╗███╗   ███╗ ██████╗  ██╗   ██╗
+ ██╗  ██╗██╗████████╗██████████╗██╗   ██╗███╗   ███╗ ██████╗ ██╗   ██╗
  ██║ ██╔╝██║╚══██╔══╝╚══██╔══╝╚██╗ ██╔╝████╗ ████║██╔═══██╗██║   ██║
  █████╔╝ ██║   ██║      ██║    ╚████╔╝ ██╔████╔██║██║   ██║██║   ██║
  ██╔═██╗ ██║   ██║      ██║     ╚██╔╝  ██║╚██╔╝██║██║   ██║╚██╗ ██╔╝
@@ -24,7 +24,7 @@
 
 Hey there! **KittyMov** is a terminal streaming application written in Rust.
 
-I made this firstly for my personal use until I decided to share it with other people who have the same issue or problems I encountered with alot of dead providers in some applications like these to watch movies, tv-series and anime without any playback issues.
+Firstly, I made this for my personal use until I decided to share it with other people who have the same issue or problems I encountered with alot of dead providers in some applications like these to watch movies, tv-series and anime without any playback issues.
 
 It runs in any Linux terminal (Kitty, Alacritty, Ghostty, Foot, WezTerm, tmux, etc.) and gives you a comfortable split-pane browser with cover art, ratings, episode guides, and multi-source streaming failover.
 
