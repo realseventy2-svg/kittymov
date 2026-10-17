@@ -16,7 +16,26 @@ pub struct MediaRequest {
     pub episode: Option<i32>,
     pub title: String,
     pub year: Option<String>,
+    pub genres: Option<String>,
+    pub is_anime: bool,
+    pub audio_mode: Option<String>,
 }
+
+impl MediaRequest {
+    pub fn is_anime(&self) -> bool {
+        if self.is_anime {
+            return true;
+        }
+        if let Some(genres) = &self.genres {
+            let lower = genres.to_lowercase();
+            if lower.contains("animation") || lower.contains("anime") {
+                return true;
+            }
+        }
+        false
+    }
+}
+
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -95,29 +114,37 @@ impl ProviderManager {
     }
 
     /// Resolves using a specific provider by identifier ("auto", "vixsrc", "hianime", "lookmovie").
-    /// If "auto", performs full fallback across configured providers.
+    /// If "auto", performs full fallback across configured providers with smart anime routing.
     #[allow(dead_code)]
     pub async fn resolve_with_choice(
         &self,
         choice: &str,
         req: &MediaRequest,
     ) -> Result<StreamCandidate, String> {
-        self.resolve_with_choice_and_quality(choice, req, None).await
+        self.resolve_with_choice_and_quality(choice, req, None, req.audio_mode.as_deref()).await
     }
 
-    /// Resolves using a specific provider and applies the requested quality preference.
+    /// Resolves using a specific provider and applies the requested quality preference and audio mode.
     pub async fn resolve_with_choice_and_quality(
         &self,
         choice: &str,
         req: &MediaRequest,
         quality: Option<&str>,
+        audio_mode: Option<&str>,
     ) -> Result<StreamCandidate, String> {
         let key = choice.to_lowercase();
+        let effective_audio = audio_mode.or(req.audio_mode.as_deref());
+
         let mut candidate = if key.contains("hianime") {
             let mut res = None;
             for provider in &self.providers {
                 if provider.name().to_lowercase().contains("hianime") {
-                    res = Some(provider.resolve(req).await?);
+                    if provider.name() == "HiAnime (1080p Anime CDN)" {
+                        let hi = hianime::HiAnimeProvider::new();
+                        res = Some(hi.resolve_with_quality(req, quality, effective_audio).await?);
+                    } else {
+                        res = Some(provider.resolve(req).await?);
+                    }
                     break;
                 }
             }
@@ -125,7 +152,7 @@ impl ProviderManager {
                 c
             } else {
                 let hi = hianime::HiAnimeProvider::new();
-                hi.resolve_with_quality(req, quality, None).await?
+                hi.resolve_with_quality(req, quality, effective_audio).await?
             };
             if let Some(q) = quality {
                 cand.quality = Some(q.to_string());
@@ -153,7 +180,12 @@ impl ProviderManager {
             let mut res = None;
             for provider in &self.providers {
                 if provider.name().to_lowercase().contains("lookmovie") {
-                    res = Some(provider.resolve(req).await?);
+                    if provider.name() == "LookMovie (Fallback CDN)" {
+                        let look = lookmovie::LookMovieProvider::new();
+                        res = Some(look.resolve_with_quality(req, quality).await?);
+                    } else {
+                        res = Some(provider.resolve(req).await?);
+                    }
                     break;
                 }
             }
@@ -170,7 +202,9 @@ impl ProviderManager {
             }
             cand
         } else {
-            let mut cand = self.resolve_with_fallback(req).await?;
+            let mut cand = self
+                .resolve_with_fallback_and_options(req, quality, effective_audio)
+                .await?;
             if let Some(q) = quality {
                 if cand.quality.is_none() {
                     cand.quality = Some(q.to_string());
@@ -208,15 +242,62 @@ impl ProviderManager {
     }
 
     /// Tries each provider in sequential priority order until one succeeds.
+    /// If req is anime, prioritizes HiAnime first to eliminate ~1.5s VixSrc 404 delays.
     /// Returns the first working StreamCandidate, or an aggregate error if all fail.
     pub async fn resolve_with_fallback(
         &self,
         req: &MediaRequest,
     ) -> Result<StreamCandidate, String> {
-        let mut failures = Vec::new();
+        self.resolve_with_fallback_and_options(req, None, req.audio_mode.as_deref()).await
+    }
 
-        for provider in &self.providers {
-            match provider.resolve(req).await {
+    /// Resolves across providers with priority routing (anime -> HiAnime first) and quality/audio options.
+    pub async fn resolve_with_fallback_and_options(
+        &self,
+        req: &MediaRequest,
+        quality: Option<&str>,
+        audio_mode: Option<&str>,
+    ) -> Result<StreamCandidate, String> {
+        let is_anime = req.is_anime();
+        let mut ordered_providers: Vec<Arc<dyn Provider>> = self.providers.clone();
+
+        if is_anime {
+            // Re-order providers so HiAnime is tried first for anime
+            ordered_providers.sort_by_key(|p| {
+                let name = p.name().to_lowercase();
+                if name.contains("hianime") {
+                    0
+                } else if name.contains("vixsrc") {
+                    1
+                } else {
+                    2
+                }
+            });
+        }
+
+        let mut failures = Vec::new();
+        let effective_audio = audio_mode.or(req.audio_mode.as_deref());
+
+        for provider in &ordered_providers {
+            let res = if provider.name().to_lowercase().contains("hianime") {
+                if provider.name() == "HiAnime (1080p Anime CDN)" {
+                    let hi = hianime::HiAnimeProvider::new();
+                    hi.resolve_with_quality(req, quality, effective_audio).await
+                } else {
+                    provider.resolve(req).await
+                }
+            } else if provider.name().to_lowercase().contains("lookmovie") {
+                if provider.name() == "LookMovie (Fallback CDN)" {
+                    let look = lookmovie::LookMovieProvider::new();
+                    look.resolve_with_quality(req, quality).await
+                } else {
+                    provider.resolve(req).await
+                }
+            } else {
+                provider.resolve(req).await
+            };
+
+            match res {
                 Ok(mut candidate) => {
                     if candidate.subtitles.is_empty()
                         && !candidate.provider_name.to_lowercase().contains("lookmovie")
@@ -255,7 +336,7 @@ impl ProviderManager {
     /// Refreshes token / link if expired or expiring soon, routing to the originating provider.
     pub async fn refresh_candidate(&self, candidate: &mut StreamCandidate) -> Result<(), String> {
         for provider in &self.providers {
-            if provider.name() == candidate.provider_name {
+            if candidate.provider_name.contains(provider.name()) || provider.name() == candidate.provider_name {
                 return provider.refresh_token(candidate).await;
             }
         }
@@ -324,6 +405,9 @@ mod tests {
             episode: None,
             title: "Fight Club".to_string(),
             year: Some("1999".to_string()),
+            genres: None,
+            is_anime: false,
+            audio_mode: None,
         };
 
         let result = mgr.resolve_with_fallback(&req).await;
@@ -353,6 +437,9 @@ mod tests {
             episode: None,
             title: "Nonexistent".to_string(),
             year: None,
+            genres: None,
+            is_anime: false,
+            audio_mode: None,
         };
 
         let result = mgr.resolve_with_fallback(&req).await;
@@ -372,6 +459,9 @@ mod tests {
             episode: None,
             title: "Fight Club".to_string(),
             year: Some("1999".to_string()),
+            genres: Some("Drama".to_string()),
+            is_anime: false,
+            audio_mode: None,
         };
 
         let res = provider.resolve(&req).await;
@@ -395,6 +485,9 @@ mod tests {
             episode: Some(1),
             title: "Steven Universe".to_string(),
             year: Some("2013".to_string()),
+            genres: Some("Animation, Comedy".to_string()),
+            is_anime: true,
+            audio_mode: None,
         };
 
         let res = provider.resolve(&req).await;
@@ -426,6 +519,9 @@ mod tests {
             episode: None,
             title: "Fight Club".to_string(),
             year: Some("1999".to_string()),
+            genres: None,
+            is_anime: false,
+            audio_mode: None,
         };
 
         let vix_res = mgr.resolve_with_choice("vixsrc", &req).await.unwrap();
@@ -439,6 +535,77 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_provider_manager_anime_auto_routing() {
+        let mgr = ProviderManager::with_providers(vec![
+            Arc::new(MockProvider {
+                name: "vixsrc_server",
+                succeed: false, // VixSrc would fail or 404 on anime
+            }),
+            Arc::new(MockProvider {
+                name: "hianime_server",
+                succeed: true, // HiAnime resolves anime directly
+            }),
+            Arc::new(MockProvider {
+                name: "lookmovie_server",
+                succeed: true,
+            }),
+        ]);
+
+        let req = MediaRequest {
+            tmdb_id: 1111,
+            media_type: "tv".to_string(),
+            season: Some(1),
+            episode: Some(1),
+            title: "Uma Musume: Cinderella Gray".to_string(),
+            year: Some("2025".to_string()),
+            genres: Some("Animation, Drama".to_string()),
+            is_anime: true,
+            audio_mode: Some("dub".to_string()),
+        };
+
+        // In auto mode, anime request should route to hianime first, bypassing vixsrc
+        let res = mgr.resolve_with_choice("auto", &req).await;
+        assert!(res.is_ok(), "Anime request should succeed: {:?}", res.err());
+        let candidate = res.unwrap();
+        assert_eq!(candidate.provider_name, "hianime_server");
+    }
+
+    #[tokio::test]
+    async fn test_provider_manager_non_anime_routing() {
+        let mgr = ProviderManager::with_providers(vec![
+            Arc::new(MockProvider {
+                name: "vixsrc_server",
+                succeed: true, // VixSrc handles mainstream movies/shows first
+            }),
+            Arc::new(MockProvider {
+                name: "hianime_server",
+                succeed: true,
+            }),
+            Arc::new(MockProvider {
+                name: "lookmovie_server",
+                succeed: true,
+            }),
+        ]);
+
+        let req = MediaRequest {
+            tmdb_id: 550,
+            media_type: "movie".to_string(),
+            season: None,
+            episode: None,
+            title: "Fight Club".to_string(),
+            year: Some("1999".to_string()),
+            genres: Some("Drama".to_string()),
+            is_anime: false,
+            audio_mode: Some("sub".to_string()),
+        };
+
+        let res = mgr.resolve_with_choice("auto", &req).await;
+        assert!(res.is_ok(), "Non-anime request should succeed: {:?}", res.err());
+        let candidate = res.unwrap();
+        assert_eq!(candidate.provider_name, "vixsrc_server");
+    }
+
+    #[tokio::test]
     async fn test_hianime_live_resolve_anime() {
         let provider = hianime::HiAnimeProvider::new();
         let req = MediaRequest {
@@ -448,6 +615,9 @@ mod tests {
             episode: Some(1),
             title: "Uma Musume: Cinderella Gray".to_string(),
             year: Some("2025".to_string()),
+            genres: Some("Animation".to_string()),
+            is_anime: true,
+            audio_mode: Some("sub".to_string()),
         };
 
         let res = provider.resolve(&req).await;
@@ -455,6 +625,33 @@ mod tests {
         assert!(
             res.is_ok(),
             "HiAnime should resolve Cinderella Gray: {:?}",
+            res.err()
+        );
+        let candidate = res.unwrap();
+        assert!(candidate.stream_url.contains(".m3u8"));
+        assert!(candidate.provider_name.contains("HiAnime"));
+    }
+
+    #[tokio::test]
+    async fn test_hianime_live_resolve_anime_dub() {
+        let provider = hianime::HiAnimeProvider::new();
+        let req = MediaRequest {
+            tmdb_id: 1429,
+            media_type: "tv".to_string(),
+            season: Some(1),
+            episode: Some(1),
+            title: "Attack on Titan".to_string(),
+            year: Some("2013".to_string()),
+            genres: Some("Animation, Action".to_string()),
+            is_anime: true,
+            audio_mode: Some("dub".to_string()),
+        };
+
+        let res = provider.resolve(&req).await;
+        println!("HiAnime Attack on Titan Dub result: {:?}", res);
+        assert!(
+            res.is_ok(),
+            "HiAnime should resolve Attack on Titan Dub: {:?}",
             res.err()
         );
         let candidate = res.unwrap();

@@ -460,11 +460,17 @@ impl Provider for HiAnimeProvider {
     }
 
     async fn resolve(&self, req: &MediaRequest) -> Result<StreamCandidate, String> {
-        self.resolve_with_quality(req, None, None).await
+        self.resolve_with_quality(req, None, req.audio_mode.as_deref()).await
     }
 
     async fn refresh_token(&self, candidate: &mut StreamCandidate) -> Result<(), String> {
-        let fresh = self.resolve(&candidate.request).await?;
+        let fresh = self
+            .resolve_with_quality(
+                &candidate.request,
+                candidate.quality.as_deref(),
+                candidate.request.audio_mode.as_deref(),
+            )
+            .await?;
         *candidate = fresh;
         Ok(())
     }

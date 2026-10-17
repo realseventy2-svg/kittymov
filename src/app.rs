@@ -1451,6 +1451,7 @@ impl App {
         };
 
         if let Some((tmdb_id, title, year, poster, season_num, ep_num, series)) = ep_play_info {
+            let is_anime = series.genres.to_lowercase().contains("animation");
             let req = MediaRequest {
                 tmdb_id,
                 media_type: "tv".to_string(),
@@ -1458,6 +1459,9 @@ impl App {
                 episode: Some(ep_num),
                 title,
                 year: Some(year),
+                genres: Some(series.genres.clone()),
+                is_anime,
+                audio_mode: Some(self.cfg.audio_mode.clone()),
             };
 
             let choice = self.cfg.preferred_provider.clone();
@@ -1470,6 +1474,7 @@ impl App {
             if item.media_type == "tv" {
                 self.open_episode_modal(item).await;
             } else {
+                let is_anime = item.genres.to_lowercase().contains("animation");
                 let req = MediaRequest {
                     tmdb_id: item.tmdb_id,
                     media_type: "movie".to_string(),
@@ -1477,6 +1482,9 @@ impl App {
                     episode: None,
                     title: item.title.clone(),
                     year: Some(item.year.clone()),
+                    genres: Some(item.genres.clone()),
+                    is_anime,
+                    audio_mode: Some(self.cfg.audio_mode.clone()),
                 };
                 let choice = self.cfg.preferred_provider.clone();
                 self.start_playback_loading(
@@ -2171,6 +2179,7 @@ impl App {
 
                 let target_title =
                     format!("{} S{:02}E{:02} — {}", title, season_num, ep_num, ep.name);
+                let is_anime = modal.series.genres.to_lowercase().contains("animation");
                 let request = MediaRequest {
                     tmdb_id,
                     media_type: "tv".to_string(),
@@ -2178,6 +2187,9 @@ impl App {
                     episode: Some(ep_num),
                     title,
                     year: Some(year),
+                    genres: Some(modal.series.genres.clone()),
+                    is_anime,
+                    audio_mode: Some(self.cfg.audio_mode.clone()),
                 };
 
                 let p_modal = ProviderSelectModalState::new(
@@ -2194,6 +2206,7 @@ impl App {
         }
 
         if let Some(item) = self.current_items.get(self.selected_index).cloned() {
+            let is_anime = item.genres.to_lowercase().contains("animation");
             if item.media_type == "tv" {
                 let target_title = format!("{} S01E01", item.title);
                 let request = MediaRequest {
@@ -2203,6 +2216,9 @@ impl App {
                     episode: Some(1),
                     title: item.title.clone(),
                     year: Some(item.year.clone()),
+                    genres: Some(item.genres.clone()),
+                    is_anime,
+                    audio_mode: Some(self.cfg.audio_mode.clone()),
                 };
                 let p_modal = ProviderSelectModalState::new(
                     target_title,
@@ -2222,6 +2238,9 @@ impl App {
                     episode: None,
                     title: item.title.clone(),
                     year: Some(item.year.clone()),
+                    genres: Some(item.genres.clone()),
+                    is_anime,
+                    audio_mode: Some(self.cfg.audio_mode.clone()),
                 };
                 let p_modal = ProviderSelectModalState::new(
                     target_title,
@@ -2377,13 +2396,23 @@ impl App {
 
     pub async fn start_playback_loading(
         &mut self,
-        req: MediaRequest,
+        mut req: MediaRequest,
         poster_path: String,
         provider_choice: String,
         quality_choice: Option<String>,
         subtitle_choice: Option<SubtitleTrackOption>,
         catalog_item: Option<MediaItem>,
     ) {
+        if req.genres.is_none() {
+            if let Some(ref item) = catalog_item {
+                req.genres = Some(item.genres.clone());
+                req.is_anime = item.genres.to_lowercase().contains("animation");
+            }
+        }
+        if req.audio_mode.is_none() {
+            req.audio_mode = Some(self.cfg.audio_mode.clone());
+        }
+
         if let Some(h) = self.loading_task.take() {
             h.abort();
         }
@@ -2563,7 +2592,13 @@ impl App {
                 "vixsrc" => "VixSrc Server",
                 "hianime" => "HiAnime Server",
                 "lookmovie" => "LookMovie Server",
-                _ => "Auto Fallback Engine",
+                _ => {
+                    if mapped_req.is_anime() {
+                        "HiAnime (Auto Anime Routing)"
+                    } else {
+                        "Auto Fallback Engine"
+                    }
+                }
             };
             let _ = tx.send(LoadingProgress::StepUpdate {
                 step: LoadingStep::ConnectingProvider,
@@ -2574,9 +2609,15 @@ impl App {
             let effective_quality = quality_choice_clone
                 .as_deref()
                 .or(Some(cfg.preferred_quality.as_str()));
+            let effective_audio = Some(cfg.audio_mode.as_str());
 
             let resolve_result = providers
-                .resolve_with_choice_and_quality(&active_provider, &mapped_req, effective_quality)
+                .resolve_with_choice_and_quality(
+                    &active_provider,
+                    &mapped_req,
+                    effective_quality,
+                    effective_audio,
+                )
                 .await;
             let mut stream = match resolve_result {
                 Ok(s) => s,
@@ -2603,7 +2644,12 @@ impl App {
                             detail: "VixSrc failed; failing over to HiAnime...".to_string(),
                         });
                         match providers
-                            .resolve_with_choice_and_quality("hianime", &req_clone, effective_quality)
+                            .resolve_with_choice_and_quality(
+                                "hianime",
+                                &req_clone,
+                                effective_quality,
+                                effective_audio,
+                            )
                             .await
                         {
                             Ok(s) => s,
@@ -2617,7 +2663,12 @@ impl App {
                                     detail: "HiAnime failed; failing over to LookMovie...".to_string(),
                                 });
                                 match providers
-                                    .resolve_with_choice_and_quality("lookmovie", &req_clone, effective_quality)
+                                    .resolve_with_choice_and_quality(
+                                        "lookmovie",
+                                        &req_clone,
+                                        effective_quality,
+                                        effective_audio,
+                                    )
                                     .await
                                 {
                                     Ok(s) => s,
@@ -2646,7 +2697,12 @@ impl App {
                             detail: "HiAnime failed; failing over to LookMovie...".to_string(),
                         });
                         match providers
-                            .resolve_with_choice_and_quality("lookmovie", &req_clone, effective_quality)
+                            .resolve_with_choice_and_quality(
+                                "lookmovie",
+                                &req_clone,
+                                effective_quality,
+                                effective_audio,
+                            )
                             .await
                         {
                             Ok(s) => s,
@@ -3073,6 +3129,9 @@ impl App {
             episode: None,
             title: title.to_string(),
             year: Some(year.to_string()),
+            genres: None,
+            is_anime: false,
+            audio_mode: Some(self.cfg.audio_mode.clone()),
         };
 
         match self
@@ -3081,6 +3140,7 @@ impl App {
                 provider_choice,
                 &req,
                 Some(&self.cfg.preferred_quality),
+                Some(&self.cfg.audio_mode),
             )
             .await
         {
@@ -3203,6 +3263,9 @@ impl App {
             episode: Some(episode),
             title: title.to_string(),
             year: Some(year.to_string()),
+            genres: None,
+            is_anime: false,
+            audio_mode: Some(self.cfg.audio_mode.clone()),
         };
 
         match self
@@ -3211,6 +3274,7 @@ impl App {
                 provider_choice,
                 &req,
                 Some(&self.cfg.preferred_quality),
+                Some(&self.cfg.audio_mode),
             )
             .await
         {
@@ -3370,6 +3434,9 @@ impl App {
                                         episode: Some(current_episode + 1),
                                         title: title.to_string(),
                                         year: Some(year.to_string()),
+                                        genres: initial_stream.request.genres.clone(),
+                                        is_anime: initial_stream.request.is_anime,
+                                        audio_mode: initial_stream.request.audio_mode.clone(),
                                     };
 
                                     tokio::spawn(async move {
@@ -3387,6 +3454,9 @@ impl App {
                                         episode: Some(current_episode),
                                         title: title.to_string(),
                                         year: Some(year.to_string()),
+                                        genres: initial_stream.request.genres.clone(),
+                                        is_anime: initial_stream.request.is_anime,
+                                        audio_mode: initial_stream.request.audio_mode.clone(),
                                     };
 
                                     if let Ok(mut next_stream) =
@@ -3753,6 +3823,9 @@ mod tests {
             episode: None,
             title: "Test Movie".to_string(),
             year: Some("2024".to_string()),
+            genres: None,
+            is_anime: false,
+            audio_mode: None,
         };
 
         let mut modal = ProviderSelectModalState::new(
@@ -3832,6 +3905,9 @@ mod tests {
             episode: None,
             title: "Cinematic Demo".to_string(),
             year: Some("2024".to_string()),
+            genres: None,
+            is_anime: false,
+            audio_mode: None,
         };
 
         let initial_steps = vec![
