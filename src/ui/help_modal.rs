@@ -170,7 +170,7 @@ pub fn render_help_modal(f: &mut Frame, area: Rect) {
     lines.push(Line::from(vec![
         Span::styled("  [o]           ", Style::default().fg(Theme::ACCENT_GOLD)),
         Span::styled(
-            "Toggle TV Episode Order (Broadcast vs Streaming/VixSrc)",
+            "Toggle TV Episode Order (Broadcast Canonical vs Alternate/Production)",
             Style::default().fg(Theme::TEXT_BODY),
         ),
     ]));

@@ -593,10 +593,10 @@ fn get_category_rows(
             (
                 "TV Episode Order Mode",
                 SettingWidget::Select(match cfg.episode_order.to_lowercase().as_str() {
-                    "streaming" => "Streaming / Production (VixSrc Order)".to_string(),
-                    _ => "Broadcast Order (Canonical / LookMovie)".to_string(),
+                    "streaming" => "Alternate / Production Order (Digital Groups)".to_string(),
+                    _ => "Broadcast Order (Canonical • Recommended)".to_string(),
                 }),
-                "TV episode order scheme. Broadcast matches canonical TV airings & LookMovie; Streaming matches VixSrc.",
+                "TV episode listing scheme. Broadcast matches canonical TV airings (default across providers). Alternate switches to DVD/digital production order.",
             ),
             (
                 "Player Engine",

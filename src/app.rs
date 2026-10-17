@@ -657,10 +657,10 @@ pub fn get_all_settings_metadata(cfg: &Config) -> Vec<SettingMatch> {
             item_idx: 2,
             label: "TV Episode Order Mode",
             value_str: match cfg.episode_order.to_lowercase().as_str() {
-                "streaming" => "Streaming / Production (VixSrc Order)".to_string(),
-                _ => "Broadcast Order (Canonical / LookMovie)".to_string(),
+                "streaming" => "Alternate / Production Order (Digital Groups)".to_string(),
+                _ => "Broadcast Order (Canonical • Recommended)".to_string(),
             },
-            description: "Season and episode ordering scheme. Broadcast matches canonical TV airings & LookMovie; Streaming matches VixSrc.",
+            description: "TV episode listing scheme. Broadcast matches canonical TV airings (default across providers). Alternate switches to DVD/digital production order.",
         },
         SettingMatch {
             category: SettingsCategory::General,
@@ -1298,10 +1298,11 @@ impl App {
     pub async fn toggle_episode_order(&mut self) {
         if self.cfg.episode_order.to_lowercase() == "streaming" {
             self.cfg.episode_order = "broadcast".to_string();
-            self.status_message = "Episode Order: Broadcast (Canonical / LookMovie)".to_string();
+            self.status_message = "Episode Order: Broadcast (Canonical • Recommended)".to_string();
         } else {
             self.cfg.episode_order = "streaming".to_string();
-            self.status_message = "Episode Order: Streaming / Production (VixSrc)".to_string();
+            self.status_message =
+                "Episode Order: Alternate / Production (Digital Groups)".to_string();
         }
         let _ = self.cfg.save();
 
@@ -2023,7 +2024,9 @@ impl App {
             let mut mapped_req = req_clone.clone();
             if mapped_req.media_type == "tv" {
                 if let (Some(s), Some(e)) = (mapped_req.season, mapped_req.episode) {
-                    if provider_choice == "vixsrc" || provider_choice == "auto" {
+                    if (provider_choice == "vixsrc" || provider_choice == "auto")
+                        && cfg.episode_order.to_lowercase() == "broadcast"
+                    {
                         if let Ok((_info, _seasons, Some(stream_map))) = tmdb
                             .get_tv_details_with_order(mapped_req.tmdb_id, "streaming")
                             .await
@@ -3271,5 +3274,22 @@ mod tests {
         app.cancel_playback_loading();
         assert!(app.playback_loading.is_none());
         assert_eq!(app.status_message, "Playback cancelled");
+    }
+
+    #[tokio::test]
+    async fn test_broadcast_order_default_and_toggle() {
+        let cfg = Config::default();
+        let db = Database::in_memory().unwrap();
+        let mut app = App::new(cfg, db);
+
+        assert_eq!(app.cfg.episode_order, "broadcast");
+
+        app.toggle_episode_order().await;
+        assert_eq!(app.cfg.episode_order, "streaming");
+        assert!(app.status_message.contains("Alternate / Production"));
+
+        app.toggle_episode_order().await;
+        assert_eq!(app.cfg.episode_order, "broadcast");
+        assert!(app.status_message.contains("Broadcast"));
     }
 }
