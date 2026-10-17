@@ -39,7 +39,15 @@ pub struct Database {
 
 impl Database {
     pub fn new() -> Result<Self> {
-        let db_path = get_config_dir().join("cachyflix.db");
+        let db_path = get_config_dir().join("kittymov.db");
+        if !db_path.exists() {
+            if let Some(parent) = get_config_dir().parent() {
+                let old_db = parent.join("cachyflix").join("cachyflix.db");
+                if old_db.exists() {
+                    let _ = std::fs::copy(old_db, &db_path);
+                }
+            }
+        }
         let s = Self { db_path };
         s.init_tables()?;
         Ok(s)

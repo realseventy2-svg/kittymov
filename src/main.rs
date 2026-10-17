@@ -21,7 +21,7 @@ use crate::config::load_config;
 use crate::storage::Database;
 
 #[derive(Parser, Debug)]
-#[command(name = "cachyflix", version = "2.0.0", about = "Modern Cyber-Minimalist Terminal Streaming Suite for CachyOS")]
+#[command(name = "kittymov", version = "2.0.0", about = "Modern Cyber-Minimalist Terminal Movie & TV Streaming Suite")]
 struct Cli {
     #[arg(help = "Optional movie or series query to search immediately")]
     query: Option<String>,
@@ -35,10 +35,10 @@ struct Cli {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Setup logging to ~/.local/state/cachyflix/cachyflix.log
-    let log_dir = dirs_fallback().join("cachyflix");
+    // Setup logging to ~/.local/state/kittymov/kittymov.log
+    let log_dir = dirs_fallback().join("kittymov");
     std::fs::create_dir_all(&log_dir).ok();
-    let log_file = log_dir.join("cachyflix.log");
+    let log_file = log_dir.join("kittymov.log");
     if let Ok(file) = std::fs::OpenOptions::new().create(true).append(true).open(&log_file) {
         let _ = tracing_subscriber::fmt()
             .with_env_filter(EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()))

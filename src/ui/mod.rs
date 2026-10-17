@@ -24,7 +24,7 @@ pub fn render_ui(f: &mut Frame, app: &App) {
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Theme::BORDER))
         .style(Style::default().bg(Theme::BG))
-        .title(" CachyFlix • Terminal Cinema ")
+        .title(" KittyMov • Terminal Cinema ")
         .title_style(Style::default().fg(Theme::ACCENT_CYAN));
 
     let inner_area = outer_block.inner(size);

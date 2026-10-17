@@ -32,14 +32,14 @@ impl Default for Config {
 
 pub fn get_config_dir() -> PathBuf {
     let mut dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("~/.config"));
-    dir.push("cachyflix");
+    dir.push("kittymov");
     std::fs::create_dir_all(&dir).ok();
     dir
 }
 
 pub fn get_cache_dir() -> PathBuf {
     let mut dir = dirs::cache_dir().unwrap_or_else(|| PathBuf::from("~/.cache"));
-    dir.push("cachyflix");
+    dir.push("kittymov");
     let posters = dir.join("posters");
     std::fs::create_dir_all(&posters).ok();
     dir

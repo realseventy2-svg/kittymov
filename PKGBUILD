@@ -1,10 +1,10 @@
 # Maintainer: realseventy2-svg <realseventy2@gmail.com>
-pkgname=cachyflix
+pkgname=kittymov
 pkgver=2.0.0
 pkgrel=1
-pkgdesc="Modern Cyber-Minimalist Terminal Streaming Suite for CachyOS"
+pkgdesc="Modern Cyber-Minimalist Terminal Movie & TV Streaming Suite"
 arch=('x86_64')
-url="https://github.com/realseventy2-svg/cachyflix"
+url="https://github.com/realseventy2-svg/kittymov"
 license=('MIT')
 depends=('mpv' 'chafa')
 makedepends=('cargo' 'rust')
@@ -17,18 +17,18 @@ build() {
 
 package() {
     cd "${srcdir}/.."
-    install -Dm755 "target/release/cachyflix" "${pkgdir}/usr/bin/cachyflix"
+    install -Dm755 "target/release/kittymov" "${pkgdir}/usr/bin/kittymov"
     
     # Desktop entry
-    install -Dm644 /dev/stdin "${pkgdir}/usr/share/applications/cachyflix.desktop" << 'EOF'
+    install -Dm644 /dev/stdin "${pkgdir}/usr/share/applications/kittymov.desktop" << 'EOF'
 [Desktop Entry]
-Name=CachyFlix
+Name=KittyMov
 Comment=Cyber-Minimalist Terminal Movie and TV Series Streamer
-Exec=cachyflix
+Exec=kittymov
 Icon=video-television
 Terminal=true
 Type=Application
 Categories=AudioVideo;Player;Video;
-Keywords=streaming;movie;tv;series;anime;mpv;ratatui;
+Keywords=streaming;movie;tv;series;anime;mpv;ratatui;kittymov;
 EOF
 }

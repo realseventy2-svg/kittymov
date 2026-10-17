@@ -117,7 +117,7 @@ impl TmdbClient {
     pub fn new(api_key: &str) -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(10))
-            .user_agent("Mozilla/5.0 (X11; Linux x86_64) CachyFlix/2.0")
+            .user_agent("Mozilla/5.0 (X11; Linux x86_64) KittyMov/2.0")
             .build()
             .unwrap_or_else(|_| Client::new());
 

@@ -1,9 +1,9 @@
 [package]
-name = "cachyflix"
+name = "kittymov"
 version = "2.0.0"
 edition = "2021"
 authors = ["realseventy2-svg <realseventy2@gmail.com>"]
-description = "Modern Minimalist TUI Movie and TV Series Streaming Suite for CachyOS"
+description = "Modern Cyber-Minimalist Terminal Movie and TV Series Streaming Suite"
 
 [dependencies]
 ratatui = "0.29"

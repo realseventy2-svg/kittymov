@@ -5,22 +5,22 @@ use super::theme::Theme;
 pub fn get_banner_lines<'a>() -> Vec<Line<'a>> {
     vec![
         Line::from(vec![
-            Span::styled(" ██████╗ █████╗  ██████╗██╗  ██╗██╗   ██╗███████╗██╗     ██╗██╗  ██╗", Style::default().fg(Theme::ACCENT_CYAN).add_modifier(Modifier::BOLD)),
+            Span::styled(" ██╗  ██╗██╗████████╗████████╗██╗   ██╗███╗   ███╗ ██████╗ ██╗   ██╗", Style::default().fg(Theme::ACCENT_CYAN).add_modifier(Modifier::BOLD)),
         ]),
         Line::from(vec![
-            Span::styled("██╔════╝██╔══██╗██╔════╝██║  ██║╚██╗ ██╔╝██╔════╝██║     ██║╚██╗██╔╝", Style::default().fg(Theme::ACCENT_CYAN)),
+            Span::styled(" ██║ ██╔╝██║╚══██╔══╝╚══██╔══╝╚██╗ ██╔╝████╗ ████║██╔═══██╗██║   ██║", Style::default().fg(Theme::ACCENT_CYAN)),
         ]),
         Line::from(vec![
-            Span::styled("██║     ███████║██║     ███████║ ╚████╔╝ █████╗  ██║     ██║ ╚███╔╝ ", Style::default().fg(Theme::ACCENT_CYAN).add_modifier(Modifier::BOLD)),
+            Span::styled(" █████╔╝ ██║   ██║      ██║    ╚████╔╝ ██╔████╔██║██║   ██║██║   ██║", Style::default().fg(Theme::ACCENT_CYAN).add_modifier(Modifier::BOLD)),
         ]),
         Line::from(vec![
-            Span::styled("██║     ██╔══██║██║     ██╔══██║  ╚██╔╝  ██╔══╝  ██║     ██║ ██╔██╗ ", Style::default().fg(Theme::ACCENT_CYAN)),
+            Span::styled(" ██╔═██╗ ██║   ██║      ██║     ╚██╔╝  ██║╚██╔╝██║██║   ██║╚██╗ ██╔╝", Style::default().fg(Theme::ACCENT_CYAN)),
         ]),
         Line::from(vec![
-            Span::styled("╚██████╗██║  ██║╚██████╗██║  ██║   ██║   ██║     ███████╗██║██╔╝ ██╗", Style::default().fg(Theme::ACCENT_CYAN).add_modifier(Modifier::BOLD)),
+            Span::styled(" ██║  ██╗██║   ██║      ██║      ██║   ██║ ╚═╝ ██║╚██████╔╝ ╚████╔╝ ", Style::default().fg(Theme::ACCENT_CYAN).add_modifier(Modifier::BOLD)),
         ]),
         Line::from(vec![
-            Span::styled(" ╚═════╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝   ╚═╝   ╚═╝     ╚══════╝╚═╝╚═╝  ╚═╝", Style::default().fg(Theme::BORDER_MUTED)),
+            Span::styled(" ╚═╝  ╚═╝╚═╝   ╚═╝      ╚═╝      ╚═╝   ╚═╝     ╚═╝ ╚═════╝   ╚═══╝  ", Style::default().fg(Theme::BORDER_MUTED)),
         ]),
     ]
 }

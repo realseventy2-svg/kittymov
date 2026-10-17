@@ -27,7 +27,7 @@ pub struct MpvController {
 impl MpvController {
     pub fn new() -> Self {
         let pid = std::process::id();
-        let ipc_path = std::env::temp_dir().join(format!("cachyflix-mpv-{}.sock", pid));
+        let ipc_path = std::env::temp_dir().join(format!("kittymov-mpv-{}.sock", pid));
         Self {
             ipc_path,
             child: None,
@@ -47,7 +47,7 @@ impl MpvController {
 
         let mut cmd = Command::new(&cfg.player);
         cmd.arg(format!("--input-ipc-server={}", self.ipc_path.display()));
-        cmd.arg(format!("--title=CachyFlix: {}", title));
+        cmd.arg(format!("--title=KittyMov: {}", title));
         cmd.arg(format!("--alang={},en,enUS,English", cfg.audio_language));
         cmd.arg(format!("--slang={},en,enUS,English", cfg.sub_language));
         cmd.arg(format!("--hwdec={}", cfg.hwdec));
