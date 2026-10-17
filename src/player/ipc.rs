@@ -81,12 +81,13 @@ impl MpvController {
             cmd.arg(format!("--user-agent={}", ua));
         }
 
-        if !stream.headers.is_empty() {
-            let headers_str = stream.headers.iter()
-                .map(|(k, v)| format!("{}: {}", k, v))
-                .collect::<Vec<_>>()
-                .join(",");
-            cmd.arg(format!("--http-header-fields={}", headers_str));
+        let custom_headers: Vec<String> = stream.headers.iter()
+            .filter(|(k, _)| !k.eq_ignore_ascii_case("user-agent") && !k.eq_ignore_ascii_case("referer"))
+            .map(|(k, v)| format!("{}: {}", k, v))
+            .collect();
+
+        if !custom_headers.is_empty() {
+            cmd.arg(format!("--http-header-fields={}", custom_headers.join(",")));
         }
 
         for sub in &stream.subtitles {
