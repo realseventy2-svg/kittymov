@@ -1,0 +1,254 @@
+mod app;
+mod config;
+mod metadata;
+mod player;
+mod providers;
+mod storage;
+mod ui;
+
+use std::io::stdout;
+use std::time::Duration;
+use clap::Parser;
+use crossterm::event::{Event, KeyCode, KeyEventKind};
+use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
+use futures_util::StreamExt;
+use ratatui::backend::CrosstermBackend;
+use ratatui::Terminal;
+use tracing_subscriber::EnvFilter;
+
+use crate::app::{ActiveTab, App};
+use crate::config::load_config;
+use crate::storage::Database;
+
+#[derive(Parser, Debug)]
+#[command(name = "cachyflix", version = "2.0.0", about = "Modern Cyber-Minimalist Terminal Streaming Suite for CachyOS")]
+struct Cli {
+    #[arg(help = "Optional movie or series query to search immediately")]
+    query: Option<String>,
+
+    #[arg(short, long, help = "Search for a movie or TV show")]
+    search: Option<String>,
+
+    #[arg(short, long, help = "Instantly resume the most recently watched title")]
+    resume: bool,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Setup logging to ~/.local/state/cachyflix/cachyflix.log
+    let log_dir = dirs_fallback().join("cachyflix");
+    std::fs::create_dir_all(&log_dir).ok();
+    let log_file = log_dir.join("cachyflix.log");
+    if let Ok(file) = std::fs::OpenOptions::new().create(true).append(true).open(&log_file) {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()))
+            .with_writer(file)
+            .try_init();
+    }
+
+    let cli = Cli::parse();
+    let cfg = load_config();
+    let db = Database::new()?;
+
+    // Fast-path: --resume flag
+    if cli.resume {
+        if let Ok(Some(latest)) = db.get_latest_watch() {
+            println!("Resuming: {}...", latest.title);
+            let mut app = App::new(cfg, db);
+            if latest.media_type == "tv" {
+                app.play_tv_series(
+                    latest.tmdb_id,
+                    &latest.title,
+                    &latest.year,
+                    &latest.poster_path,
+                    latest.season.unwrap_or(1),
+                    latest.episode.unwrap_or(1),
+                ).await;
+            } else {
+                app.play_movie(crate::metadata::MediaItem {
+                    tmdb_id: latest.tmdb_id,
+                    media_type: latest.media_type,
+                    title: latest.title,
+                    year: latest.year,
+                    rating: 0.0,
+                    poster_path: latest.poster_path,
+                    overview: String::new(),
+                    genres: String::new(),
+                    duration_str: String::new(),
+                    status: String::new(),
+                    episodes_count: None,
+                }).await;
+            }
+            return Ok(());
+        } else {
+            println!("No recent watch history found.");
+            return Ok(());
+        }
+    }
+
+    // Set up crash-safe panic hook
+    let default_panic = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        let _ = disable_raw_mode();
+        let _ = crossterm::execute!(stdout(), LeaveAlternateScreen);
+        default_panic(panic_info);
+    }));
+
+    // Setup terminal
+    enable_raw_mode()?;
+    let mut stdout = stdout();
+    crossterm::execute!(stdout, EnterAlternateScreen)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+
+    let mut app = App::new(cfg, db);
+    app.init().await;
+
+    let initial_query = cli.search.or(cli.query);
+    if let Some(q) = initial_query {
+        app.search_query = q;
+        app.perform_search().await;
+    }
+
+    let mut reader = crossterm::event::EventStream::new();
+    let mut tick_interval = tokio::time::interval(Duration::from_millis(33)); // ~30 FPS
+
+    while !app.should_quit {
+        terminal.draw(|f| ui::render_ui(f, &app))?;
+
+        tokio::select! {
+            _ = tick_interval.tick() => {}
+            Some(Ok(event)) = reader.next() => {
+                if let Event::Key(key) = event {
+                    if key.kind == KeyEventKind::Press {
+                        handle_key_event(&mut app, key.code, key.modifiers).await;
+                    }
+                }
+            }
+        }
+    }
+
+    // Restore terminal
+    disable_raw_mode()?;
+    crossterm::execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    terminal.show_cursor()?;
+
+    Ok(())
+}
+
+async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::event::KeyModifiers) {
+    // If in search input mode
+    if app.is_searching {
+        match code {
+            KeyCode::Char(c) => {
+                app.search_query.push(c);
+            }
+            KeyCode::Backspace => {
+                app.search_query.pop();
+            }
+            KeyCode::Enter => {
+                app.perform_search().await;
+            }
+            KeyCode::Esc => {
+                app.is_searching = false;
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    // If Episode Modal is open
+    if let Some(ref mut modal) = app.episode_modal {
+        match code {
+            KeyCode::Esc => {
+                app.episode_modal = None;
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                if modal.selected_episode_idx > 0 {
+                    modal.selected_episode_idx -= 1;
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if !modal.episodes.is_empty() && modal.selected_episode_idx + 1 < modal.episodes.len() {
+                    modal.selected_episode_idx += 1;
+                }
+            }
+            KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('[') => {
+                if modal.selected_season_idx > 0 {
+                    modal.selected_season_idx -= 1;
+                    modal.selected_episode_idx = 0;
+                    if let Some(s) = modal.seasons.get(modal.selected_season_idx) {
+                        let tmdb_id = modal.series.tmdb_id;
+                        let s_num = s.season_number;
+                        modal.episodes = app.tmdb.get_season_episodes(tmdb_id, s_num).await.unwrap_or_default();
+                    }
+                }
+            }
+            KeyCode::Right | KeyCode::Char('l') | KeyCode::Char(']') => {
+                if !modal.seasons.is_empty() && modal.selected_season_idx + 1 < modal.seasons.len() {
+                    modal.selected_season_idx += 1;
+                    modal.selected_episode_idx = 0;
+                    if let Some(s) = modal.seasons.get(modal.selected_season_idx) {
+                        let tmdb_id = modal.series.tmdb_id;
+                        let s_num = s.season_number;
+                        modal.episodes = app.tmdb.get_season_episodes(tmdb_id, s_num).await.unwrap_or_default();
+                    }
+                }
+            }
+            KeyCode::Enter => {
+                app.on_enter().await;
+            }
+            KeyCode::Char('a') => {
+                app.cfg.auto_play_next = !app.cfg.auto_play_next;
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    // Main view navigation
+    match code {
+        KeyCode::Char('q') => {
+            app.should_quit = true;
+        }
+        KeyCode::Char('/') => {
+            app.is_searching = true;
+            app.search_query.clear();
+        }
+        KeyCode::Char('1') => {
+            app.load_tab(ActiveTab::Movies).await;
+        }
+        KeyCode::Char('2') => {
+            app.load_tab(ActiveTab::Series).await;
+        }
+        KeyCode::Char('3') => {
+            app.load_tab(ActiveTab::History).await;
+        }
+        KeyCode::Char('4') => {
+            app.load_tab(ActiveTab::Bookmarks).await;
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            app.select_prev().await;
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            app.select_next().await;
+        }
+        KeyCode::Enter => {
+            app.on_enter().await;
+        }
+        KeyCode::Char('f') => {
+            app.toggle_favorite().await;
+        }
+        KeyCode::Char('a') => {
+            app.cfg.auto_play_next = !app.cfg.auto_play_next;
+            app.status_message = format!("Auto-Play Next: {}", if app.cfg.auto_play_next { "ON" } else { "OFF" });
+        }
+        _ => {}
+    }
+}
+
+fn dirs_fallback() -> std::path::PathBuf {
+    std::env::var_os("HOME")
+        .map(|h| std::path::PathBuf::from(h).join(".local/state"))
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+}

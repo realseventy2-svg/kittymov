@@ -1,0 +1,30 @@
+[package]
+name = "cachyflix"
+version = "2.0.0"
+edition = "2021"
+authors = ["realseventy2-svg <realseventy2@gmail.com>"]
+description = "Modern Minimalist TUI Movie and TV Series Streaming Suite for CachyOS"
+
+[dependencies]
+ratatui = "0.29"
+crossterm = { version = "0.28", features = ["event-stream"] }
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip", "brotli"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+async-trait = "0.1"
+regex = "1.11"
+futures-util = "0.3"
+chrono = "0.4"
+url = "2.5"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
