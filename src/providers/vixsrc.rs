@@ -106,6 +106,8 @@ impl Provider for VixSrcProvider {
         headers.insert("User-Agent".to_string(), USER_AGENT.to_string());
         headers.insert("Referer".to_string(), embed_url.clone());
 
+        let actual_title = extract_title_from_embed_path(&embed_path);
+
         Ok(StreamCandidate {
             stream_url: master_url,
             provider_name: self.name().to_string(),
@@ -114,6 +116,7 @@ impl Provider for VixSrcProvider {
             expires_at,
             embed_url: Some(embed_url),
             request: req.clone(),
+            actual_title,
         })
     }
 
@@ -122,4 +125,19 @@ impl Provider for VixSrcProvider {
         *candidate = fresh;
         Ok(())
     }
+}
+
+fn extract_title_from_embed_path(embed_path: &str) -> Option<String> {
+    use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+    use base64::Engine;
+
+    let pos = embed_path.find("&d=")?;
+    let raw = &embed_path[pos + 3..];
+    let token = raw.split('&').next()?;
+    let decoded_url: String = url::form_urlencoded::parse(token.as_bytes())
+        .map(|(k, _)| k.to_string())
+        .collect();
+    let to_decode = if decoded_url.is_empty() { token } else { &decoded_url };
+    let bytes = BASE64_STANDARD.decode(to_decode.as_bytes()).ok()?;
+    String::from_utf8(bytes).ok()
 }

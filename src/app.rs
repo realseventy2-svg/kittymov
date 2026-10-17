@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -25,6 +26,7 @@ pub struct EpisodeModalState {
     pub selected_season_idx: usize,
     pub episodes: Vec<TvEpisode>,
     pub selected_episode_idx: usize,
+    pub all_season_episodes: Option<HashMap<i32, Vec<TvEpisode>>>,
 }
 
 pub struct App {
@@ -248,9 +250,13 @@ impl App {
 
     pub async fn open_episode_modal(&mut self, item: MediaItem) {
         self.status_message = format!("Loading seasons for {}...", item.title);
-        if let Ok((_details, seasons)) = self.tmdb.get_tv_details(item.tmdb_id).await {
+        if let Ok((_details, seasons, stream_episodes_map)) = self.tmdb.get_tv_details(item.tmdb_id).await {
             let first_season = seasons.first().map(|s| s.season_number).unwrap_or(1);
-            let episodes = self.tmdb.get_season_episodes(item.tmdb_id, first_season).await.unwrap_or_default();
+            let episodes = if let Some(ref map) = stream_episodes_map {
+                map.get(&first_season).cloned().unwrap_or_default()
+            } else {
+                self.tmdb.get_season_episodes(item.tmdb_id, first_season).await.unwrap_or_default()
+            };
 
             self.episode_modal = Some(EpisodeModalState {
                 series: item,
@@ -258,6 +264,7 @@ impl App {
                 selected_season_idx: 0,
                 episodes,
                 selected_episode_idx: 0,
+                all_season_episodes: stream_episodes_map,
             });
             self.status_message = "Opened Episode Guide".to_string();
         } else {
@@ -378,7 +385,11 @@ impl App {
         crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen).ok();
 
         let mut controller = MpvController::new();
-        let display_title = format!("{} S{:02}E{:02}", title, current_season, current_episode);
+        let display_title = if let Some(ref act) = initial_stream.actual_title {
+            format!("{} — {}", title, act)
+        } else {
+            format!("{} S{:02}E{:02}", title, current_season, current_episode)
+        };
 
         if let Ok(()) = controller.start_player(&initial_stream, &display_title, &self.cfg) {
             let (status_tx, mut status_rx) = mpsc::channel(32);
@@ -429,6 +440,12 @@ impl App {
                                     if let Some(ref embed) = next_stream.embed_url {
                                         let _ = controller.send_command(&["set_property", "referrer", embed]).await;
                                     }
+                                    let next_title = if let Some(ref act) = next_stream.actual_title {
+                                        format!("{} — {}", title, act)
+                                    } else {
+                                        format!("{} S{:02}E{:02}", title, current_season, current_episode)
+                                    };
+                                    let _ = controller.send_command(&["set_property", "title", &format!("KittyMov: {}", next_title)]).await;
                                     let _ = controller.send_command(&["loadfile", &next_stream.stream_url, "replace"]).await;
 
                                     let _ = self.db.record_watch(

@@ -180,7 +180,11 @@ async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::e
                     if let Some(s) = modal.seasons.get(modal.selected_season_idx) {
                         let tmdb_id = modal.series.tmdb_id;
                         let s_num = s.season_number;
-                        modal.episodes = app.tmdb.get_season_episodes(tmdb_id, s_num).await.unwrap_or_default();
+                        if let Some(ref map) = modal.all_season_episodes {
+                            modal.episodes = map.get(&s_num).cloned().unwrap_or_default();
+                        } else {
+                            modal.episodes = app.tmdb.get_season_episodes(tmdb_id, s_num).await.unwrap_or_default();
+                        }
                     }
                 }
             }
@@ -191,7 +195,11 @@ async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::e
                     if let Some(s) = modal.seasons.get(modal.selected_season_idx) {
                         let tmdb_id = modal.series.tmdb_id;
                         let s_num = s.season_number;
-                        modal.episodes = app.tmdb.get_season_episodes(tmdb_id, s_num).await.unwrap_or_default();
+                        if let Some(ref map) = modal.all_season_episodes {
+                            modal.episodes = map.get(&s_num).cloned().unwrap_or_default();
+                        } else {
+                            modal.episodes = app.tmdb.get_season_episodes(tmdb_id, s_num).await.unwrap_or_default();
+                        }
                     }
                 }
             }

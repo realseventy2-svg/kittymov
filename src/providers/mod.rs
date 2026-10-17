@@ -23,6 +23,7 @@ pub struct StreamCandidate {
     pub expires_at: u64,
     pub embed_url: Option<String>,
     pub request: MediaRequest,
+    pub actual_title: Option<String>,
 }
 
 impl StreamCandidate {

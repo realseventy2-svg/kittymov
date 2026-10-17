@@ -905,6 +905,7 @@ name = "kittymov"
 version = "2.0.0"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "chrono",
  "clap",
  "crossterm",
