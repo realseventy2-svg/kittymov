@@ -1041,6 +1041,17 @@ impl App {
     }
 
     pub async fn init(&mut self) {
+        if self.setup_wizard.is_some() {
+            let tab = match self.cfg.default_tab.to_lowercase().as_str() {
+                "series" | "tv" => ActiveTab::Series,
+                "history" => ActiveTab::History,
+                "bookmarks" => ActiveTab::Bookmarks,
+                _ => ActiveTab::Movies,
+            };
+            self.load_tab(tab).await;
+            return;
+        }
+
         if self.cfg.resume_on_startup {
             if let Ok(Some(latest)) = self.db.get_latest_watch() {
                 self.status_message = format!("Resuming {}...", latest.title);
@@ -3671,5 +3682,38 @@ mod tests {
         app.setup_wizard_finish();
         assert!(app.setup_wizard.is_none());
         assert!(app.status_message.contains("Welcome to KittyMov"));
+    }
+
+    #[tokio::test]
+    async fn test_setup_wizard_prevents_auto_resume() {
+        let cfg = Config {
+            resume_on_startup: true,
+            ..Config::default()
+        };
+        let db = Database::in_memory().unwrap();
+        // Record watch history
+        let _ = db.record_watch(
+            101,
+            "movie",
+            "Sample Watch",
+            "2024",
+            "",
+            None,
+            None,
+            None,
+            120,
+            3600,
+        );
+
+        let mut app = App::new(cfg, db);
+        app.open_setup_wizard();
+        assert!(app.setup_wizard.is_some());
+
+        // Call init() while setup wizard is open
+        app.init().await;
+
+        // Auto-resume should NOT have launched playback
+        assert!(app.playback_loading.is_none());
+        assert!(app.setup_wizard.is_some());
     }
 }

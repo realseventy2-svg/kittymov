@@ -77,8 +77,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let db = Database::new()?;
 
-    // Fast-path: --resume flag
-    if cli.resume {
+    // Fast-path: --resume flag (unless --setup is explicitly passed)
+    if cli.resume && !cli.setup {
         if let Ok(Some(latest)) = db.get_latest_watch() {
             println!("Resuming: {}...", latest.title);
             let mut app = App::new(cfg, db);
@@ -138,8 +138,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let initial_query = cli.search.or(cli.query);
     if let Some(q) = initial_query {
-        app.search_query = q;
-        app.perform_search().await;
+        if app.setup_wizard.is_none() {
+            app.search_query = q;
+            app.perform_search().await;
+        }
     }
 
     let mut reader = crossterm::event::EventStream::new();
