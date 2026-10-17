@@ -3,7 +3,7 @@
 <div align="center">
 
 ```
- ██╗  ██╗██╗████████╗████████╗██╗   ██╗███╗   ███╗ ██████╗ ██╗   ██╗
+ ██╗  ██╗██╗████████╗████████╗██╗   ██╗███╗   ███╗ ██████╗  ██╗   ██╗
  ██║ ██╔╝██║╚══██╔══╝╚══██╔══╝╚██╗ ██╔╝████╗ ████║██╔═══██╗██║   ██║
  █████╔╝ ██║   ██║      ██║    ╚████╔╝ ██╔████╔██║██║   ██║██║   ██║
  ██╔═██╗ ██║   ██║      ██║     ╚██╔╝  ██║╚██╔╝██║██║   ██║╚██╗ ██╔╝
@@ -22,9 +22,9 @@
 
 ---
 
-Hey there! **KittyMov** is a terminal streaming application I wrote in Rust.
+Hey there! **KittyMov** is a terminal streaming application written in Rust.
 
-I got tired of bloated streaming websites, broken video players, intrusive popups, and having to hunt down subtitle files manually. I wanted something fast, clean, and reliable where I could just search for a movie or show, pick an episode, have subtitles fetched automatically, and watch it directly in `mpv` with zero distractions.
+I made this firstly for my personal use until I decided to share it with other people who have the same issue or problems I encountered with alot of dead providers in some applications like these to watch movies, tv-series and anime without any playback issues.
 
 It runs in any Linux terminal (Kitty, Alacritty, Ghostty, Foot, WezTerm, tmux, etc.) and gives you a comfortable split-pane browser with cover art, ratings, episode guides, and multi-source streaming failover.
 
