@@ -47,10 +47,21 @@ impl MpvController {
 
         let mut cmd = Command::new(&cfg.player);
         cmd.arg(format!("--input-ipc-server={}", self.ipc_path.display()));
-        let title_with_provider = format!("KittyMov: {} [{}]", title, stream.provider_name);
+        let title_with_provider = format!("KittyMov: {} [{}] [{}]", title, stream.provider_name, cfg.audio_mode.to_uppercase());
         cmd.arg(format!("--title={}", title_with_provider));
-        cmd.arg(format!("--alang={},en,enUS,English", cfg.audio_language));
-        cmd.arg(format!("--slang={},en,enUS,English", cfg.sub_language));
+
+        let is_sub = cfg.audio_mode.to_lowercase() == "sub";
+        if is_sub {
+            cmd.arg(format!("--alang=jpn,ja,Japanese,original,{},en,eng", cfg.audio_language));
+            cmd.arg(format!("--slang={},en,enUS,English", cfg.sub_language));
+            cmd.arg("--sub-visibility=yes");
+            cmd.arg("--sub-auto=fuzzy");
+        } else {
+            cmd.arg(format!("--alang={},en,enUS,English,jpn", cfg.audio_language));
+            cmd.arg(format!("--slang={},en,enUS,English", cfg.sub_language));
+            cmd.arg("--sub-visibility=auto");
+            cmd.arg("--sub-auto=fuzzy");
+        }
         cmd.arg(format!("--hwdec={}", cfg.hwdec));
 
         // Explicit referrer and user-agent for CDN and HLS segments

@@ -3,6 +3,8 @@ pub mod catalog_list;
 pub mod episode_modal;
 pub mod metadata_panel;
 pub mod poster;
+pub mod provider_modal;
+pub mod settings_modal;
 pub mod theme;
 
 use ratatui::layout::{Constraint, Direction, Layout};
@@ -13,6 +15,8 @@ use ratatui::Frame;
 use self::catalog_list::render_catalog_panel;
 use self::episode_modal::render_episode_modal;
 use self::metadata_panel::render_metadata_panel;
+use self::provider_modal::render_provider_modal;
+use self::settings_modal::render_settings_modal;
 use self::theme::Theme;
 use crate::app::App;
 
@@ -76,6 +80,8 @@ pub fn render_ui(f: &mut Frame, app: &App) {
         &app.status_message,
         active_tab_name,
         app.cfg.auto_play_next,
+        &app.cfg.audio_mode,
+        &app.cfg.preferred_provider,
     );
 
     // If Episode modal is active, overlay it
@@ -89,6 +95,29 @@ pub fn render_ui(f: &mut Frame, app: &App) {
             &modal_state.episodes,
             modal_state.selected_episode_idx,
             app.cfg.auto_play_next,
+            &app.cfg.audio_mode,
+        );
+    }
+
+    // If Provider / Server selector modal is active, overlay it
+    if let Some(ref p_modal) = app.provider_modal {
+        render_provider_modal(
+            f,
+            size,
+            &p_modal.target_title,
+            &app.cfg.audio_mode,
+            &p_modal.options,
+            p_modal.selected_idx,
+        );
+    }
+
+    // If Settings modal is active, overlay it
+    if let Some(ref s_modal) = app.settings_modal {
+        render_settings_modal(
+            f,
+            size,
+            &app.cfg,
+            s_modal.selected_idx,
         );
     }
 }

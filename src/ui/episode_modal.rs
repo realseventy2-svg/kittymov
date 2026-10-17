@@ -16,6 +16,7 @@ pub fn render_episode_modal(
     episodes: &[TvEpisode],
     selected_ep_idx: usize,
     auto_play: bool,
+    audio_mode: &str,
 ) {
     // Center popup dialog
     let popup_area = centered_rect(area, 75, 75);
@@ -25,10 +26,12 @@ pub fn render_episode_modal(
         .map(|s| s.name.as_str())
         .unwrap_or("Season");
 
+    let is_sub = audio_mode.to_lowercase() == "sub";
+    let mode_str = if is_sub { "[SUB]" } else { "[DUB]" };
     let auto_play_badge = if auto_play {
-        Span::styled(" [AUTO-PLAY: ON] ", Style::default().fg(Theme::ACCENT_GREEN).add_modifier(Modifier::BOLD))
+        Span::styled(format!(" {} [AUTO-PLAY: ON] ", mode_str), Style::default().fg(Theme::ACCENT_GREEN).add_modifier(Modifier::BOLD))
     } else {
-        Span::styled(" [AUTO-PLAY: OFF] ", Style::default().fg(Theme::TEXT_MUTED))
+        Span::styled(format!(" {} [AUTO-PLAY: OFF] ", mode_str), Style::default().fg(Theme::TEXT_MUTED))
     };
 
     let title_line = format!(" {} • {} ", series_title, season_name);
@@ -143,7 +146,7 @@ pub fn render_episode_modal(
 
     // 4. Hotkey Hints
     let hints = Line::from(vec![
-        Span::styled(" [Enter] Watch Episode   [← / →] Switch Season   [a] Toggle Auto-Play   [Esc] Close ", Style::default().fg(Theme::TEXT_MUTED)),
+        Span::styled(" [Enter] Watch   [s] Select Server   [d] Sub/Dub   [← / →] Season   [a] Auto-Play   [Esc] Close ", Style::default().fg(Theme::TEXT_MUTED)),
     ]);
     f.render_widget(Paragraph::new(hints).alignment(Alignment::Center), inner_chunks[3]);
 }

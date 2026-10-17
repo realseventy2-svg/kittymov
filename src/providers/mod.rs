@@ -58,6 +58,7 @@ pub struct ProviderManager {
 }
 
 impl ProviderManager {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self {
             providers: vec![
@@ -70,6 +71,45 @@ impl ProviderManager {
     #[allow(dead_code)]
     pub fn with_providers(providers: Vec<Arc<dyn Provider>>) -> Self {
         Self { providers }
+    }
+
+    pub fn with_preference(preferred: &str) -> Self {
+        let vix = Arc::new(vixsrc::VixSrcProvider::new());
+        let look = Arc::new(lookmovie::LookMovieProvider::new());
+
+        let providers: Vec<Arc<dyn Provider>> = match preferred.to_lowercase().as_str() {
+            "lookmovie" => vec![look, vix],
+            "vixsrc_only" => vec![vix],
+            "lookmovie_only" => vec![look],
+            _ => vec![vix, look],
+        };
+
+        Self { providers }
+    }
+
+    /// Resolves using a specific provider by identifier ("auto", "vixsrc", "lookmovie").
+    /// If "auto", performs full fallback across configured providers.
+    pub async fn resolve_with_choice(&self, choice: &str, req: &MediaRequest) -> Result<StreamCandidate, String> {
+        let key = choice.to_lowercase();
+        if key.contains("vixsrc") {
+            for provider in &self.providers {
+                if provider.name().to_lowercase().contains("vixsrc") {
+                    return provider.resolve(req).await;
+                }
+            }
+            let vix = vixsrc::VixSrcProvider::new();
+            vix.resolve(req).await
+        } else if key.contains("lookmovie") {
+            for provider in &self.providers {
+                if provider.name().to_lowercase().contains("lookmovie") {
+                    return provider.resolve(req).await;
+                }
+            }
+            let look = lookmovie::LookMovieProvider::new();
+            look.resolve(req).await
+        } else {
+            self.resolve_with_fallback(req).await
+        }
     }
 
     #[allow(dead_code)]
@@ -211,5 +251,31 @@ mod tests {
         let candidate = res.unwrap();
         assert!(candidate.stream_url.contains(".m3u8"));
         assert_eq!(candidate.provider_name, "LookMovie (Fallback CDN)");
+    }
+
+    #[tokio::test]
+    async fn test_provider_manager_resolve_with_choice() {
+        let mgr = ProviderManager::with_providers(vec![
+            Arc::new(MockProvider { name: "vixsrc_server", succeed: true }),
+            Arc::new(MockProvider { name: "lookmovie_server", succeed: true }),
+        ]);
+
+        let req = MediaRequest {
+            tmdb_id: 550,
+            media_type: "movie".to_string(),
+            season: None,
+            episode: None,
+            title: "Fight Club".to_string(),
+            year: Some("1999".to_string()),
+        };
+
+        let vix_res = mgr.resolve_with_choice("vixsrc", &req).await.unwrap();
+        assert_eq!(vix_res.provider_name, "vixsrc_server");
+
+        let look_res = mgr.resolve_with_choice("lookmovie", &req).await.unwrap();
+        assert_eq!(look_res.provider_name, "lookmovie_server");
+
+        let auto_res = mgr.resolve_with_choice("auto", &req).await.unwrap();
+        assert_eq!(auto_res.provider_name, "vixsrc_server");
     }
 }

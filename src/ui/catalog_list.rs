@@ -18,6 +18,8 @@ pub fn render_catalog_panel(
     status_text: &str,
     active_tab_name: &str,
     auto_play_enabled: bool,
+    audio_mode: &str,
+    preferred_provider: &str,
 ) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -125,17 +127,32 @@ pub fn render_catalog_panel(
     f.render_widget(list_p, chunks[2]);
 
     // 4. Quick Actions / Controls Footer
-    let auto_play_str = if auto_play_enabled {
-        Span::styled("[Auto-Play: ON] ", Style::default().fg(Theme::ACCENT_GREEN).add_modifier(Modifier::BOLD))
+    let is_sub = audio_mode.to_lowercase() == "sub";
+    let mode_badge = if is_sub {
+        Span::styled("[SUB] ", Style::default().fg(Theme::ACCENT_PINK).add_modifier(Modifier::BOLD))
     } else {
-        Span::styled("[Auto-Play: OFF] ", Style::default().fg(Theme::TEXT_MUTED))
+        Span::styled("[DUB] ", Style::default().fg(Theme::ACCENT_CYAN).add_modifier(Modifier::BOLD))
+    };
+
+    let server_badge = match preferred_provider.to_lowercase().as_str() {
+        "vixsrc" => Span::styled("[VixSrc] ", Style::default().fg(Theme::ACCENT_CYAN)),
+        "lookmovie" => Span::styled("[LookMovie] ", Style::default().fg(Theme::ACCENT_GOLD)),
+        _ => Span::styled("[Auto] ", Style::default().fg(Theme::ACCENT_GREEN)),
+    };
+
+    let auto_play_str = if auto_play_enabled {
+        Span::styled("[AutoNext: ON] ", Style::default().fg(Theme::ACCENT_GREEN).add_modifier(Modifier::BOLD))
+    } else {
+        Span::styled("[AutoNext: OFF] ", Style::default().fg(Theme::TEXT_MUTED))
     };
 
     let footer_lines = vec![
         Line::from(vec![
-            Span::styled(" [1] Movies  [2] Series  [3] History  [4] Bookmarks  ", Style::default().fg(Theme::ACCENT_CYAN)),
+            mode_badge,
+            server_badge,
             auto_play_str,
-            Span::styled(status_text, Style::default().fg(Theme::TEXT_MUTED)),
+            Span::styled("[s] Server  [d] Sub/Dub  [S] Settings  [f] Fav  ", Style::default().fg(Theme::TEXT_MUTED)),
+            Span::styled(status_text, Style::default().fg(Theme::TEXT_BODY)),
         ]),
     ];
     let footer_block = Block::default()

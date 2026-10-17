@@ -137,7 +137,69 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::event::KeyModifiers) {
-    // If in search input mode
+    // 1. If Settings Modal is open
+    if app.settings_modal.is_some() {
+        match code {
+            KeyCode::Esc | KeyCode::Char('S') => {
+                app.toggle_settings();
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                app.settings_prev();
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                app.settings_next();
+            }
+            KeyCode::Left | KeyCode::Char('h') => {
+                app.settings_change_value(false);
+            }
+            KeyCode::Right | KeyCode::Char('l') | KeyCode::Char(' ') | KeyCode::Enter => {
+                app.settings_change_value(true);
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    // 2. If Provider / Server selector modal is open
+    if let Some(ref mut p_modal) = app.provider_modal {
+        match code {
+            KeyCode::Esc => {
+                app.provider_modal = None;
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                app.provider_modal_prev();
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                app.provider_modal_next();
+            }
+            KeyCode::Char('1') => {
+                p_modal.selected_idx = 0;
+                app.provider_modal_confirm().await;
+            }
+            KeyCode::Char('2') => {
+                if p_modal.options.len() > 1 {
+                    p_modal.selected_idx = 1;
+                }
+                app.provider_modal_confirm().await;
+            }
+            KeyCode::Char('3') => {
+                if p_modal.options.len() > 2 {
+                    p_modal.selected_idx = 2;
+                }
+                app.provider_modal_confirm().await;
+            }
+            KeyCode::Char('d') => {
+                app.toggle_audio_mode();
+            }
+            KeyCode::Enter => {
+                app.provider_modal_confirm().await;
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    // 3. If in search input mode
     if app.is_searching {
         match code {
             KeyCode::Char(c) => {
@@ -157,11 +219,20 @@ async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::e
         return;
     }
 
-    // If Episode Modal is open
+    // 4. If Episode Modal is open
     if let Some(ref mut modal) = app.episode_modal {
         match code {
             KeyCode::Esc => {
                 app.episode_modal = None;
+            }
+            KeyCode::Char('s') => {
+                app.open_provider_modal_for_selected();
+            }
+            KeyCode::Char('d') => {
+                app.toggle_audio_mode();
+            }
+            KeyCode::Char('S') => {
+                app.toggle_settings();
             }
             KeyCode::Up | KeyCode::Char('k') => {
                 if modal.selected_episode_idx > 0 {
@@ -208,13 +279,15 @@ async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::e
             }
             KeyCode::Char('a') => {
                 app.cfg.auto_play_next = !app.cfg.auto_play_next;
+                let _ = app.cfg.save();
+                app.status_message = format!("Auto-Play Next: {}", if app.cfg.auto_play_next { "ON" } else { "OFF" });
             }
             _ => {}
         }
         return;
     }
 
-    // Main view navigation
+    // 5. Main view navigation
     match code {
         KeyCode::Char('q') => {
             app.should_quit = true;
@@ -244,11 +317,21 @@ async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::e
         KeyCode::Enter => {
             app.on_enter().await;
         }
+        KeyCode::Char('s') => {
+            app.open_provider_modal_for_selected();
+        }
+        KeyCode::Char('d') => {
+            app.toggle_audio_mode();
+        }
+        KeyCode::Char('S') | KeyCode::F(2) | KeyCode::Char(',') => {
+            app.toggle_settings();
+        }
         KeyCode::Char('f') => {
             app.toggle_favorite().await;
         }
         KeyCode::Char('a') => {
             app.cfg.auto_play_next = !app.cfg.auto_play_next;
+            let _ = app.cfg.save();
             app.status_message = format!("Auto-Play Next: {}", if app.cfg.auto_play_next { "ON" } else { "OFF" });
         }
         _ => {}

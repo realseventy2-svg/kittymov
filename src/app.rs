@@ -19,6 +19,25 @@ pub enum ActiveTab {
     Bookmarks,
 }
 
+#[derive(Debug, Clone)]
+pub struct ProviderOption {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+}
+
+pub struct ProviderSelectModalState {
+    pub target_title: String,
+    pub request: MediaRequest,
+    pub poster_path: String,
+    pub options: Vec<ProviderOption>,
+    pub selected_idx: usize,
+}
+
+pub struct SettingsModalState {
+    pub selected_idx: usize,
+}
+
 pub struct EpisodeModalState {
     pub series: MediaItem,
     pub seasons: Vec<TvSeason>,
@@ -44,13 +63,15 @@ pub struct App {
 
     pub current_poster_text: Option<ratatui::text::Text<'static>>,
     pub episode_modal: Option<EpisodeModalState>,
+    pub provider_modal: Option<ProviderSelectModalState>,
+    pub settings_modal: Option<SettingsModalState>,
     pub should_quit: bool,
 }
 
 impl App {
     pub fn new(cfg: Config, db: Database) -> Self {
         let tmdb = Arc::new(TmdbClient::new(&cfg.tmdb_api_key));
-        let providers = Arc::new(ProviderManager::new());
+        let providers = Arc::new(ProviderManager::with_preference(&cfg.preferred_provider));
 
         Self {
             cfg,
@@ -65,6 +86,8 @@ impl App {
             status_message: "Ready".to_string(),
             current_poster_text: None,
             episode_modal: None,
+            provider_modal: None,
+            settings_modal: None,
             should_quit: false,
         }
     }
@@ -271,26 +294,250 @@ impl App {
         }
     }
 
+    pub fn toggle_audio_mode(&mut self) {
+        if self.cfg.audio_mode.to_lowercase() == "sub" {
+            self.cfg.audio_mode = "dub".to_string();
+            self.status_message = "Audio Mode: DUB (English Audio Track)".to_string();
+        } else {
+            self.cfg.audio_mode = "sub".to_string();
+            self.status_message = "Audio Mode: SUB (Original Audio + Subtitles)".to_string();
+        }
+        let _ = self.cfg.save();
+    }
+
+    pub fn toggle_settings(&mut self) {
+        if self.settings_modal.is_some() {
+            self.save_settings();
+            self.settings_modal = None;
+        } else {
+            self.settings_modal = Some(SettingsModalState { selected_idx: 0 });
+            self.status_message = "Settings Menu Opened".to_string();
+        }
+    }
+
+    pub fn save_settings(&mut self) {
+        let _ = self.cfg.save();
+        self.providers = Arc::new(ProviderManager::with_preference(&self.cfg.preferred_provider));
+        self.status_message = "Settings saved".to_string();
+    }
+
+    pub fn settings_next(&mut self) {
+        if let Some(ref mut s) = self.settings_modal {
+            if s.selected_idx + 1 < 6 {
+                s.selected_idx += 1;
+            } else {
+                s.selected_idx = 0;
+            }
+        }
+    }
+
+    pub fn settings_prev(&mut self) {
+        if let Some(ref mut s) = self.settings_modal {
+            if s.selected_idx > 0 {
+                s.selected_idx -= 1;
+            } else {
+                s.selected_idx = 5;
+            }
+        }
+    }
+
+    pub fn settings_change_value(&mut self, forward: bool) {
+        if let Some(ref s) = self.settings_modal {
+            match s.selected_idx {
+                0 => {
+                    self.cfg.audio_mode = if self.cfg.audio_mode.to_lowercase() == "sub" {
+                        "dub".to_string()
+                    } else {
+                        "sub".to_string()
+                    };
+                }
+                1 => {
+                    let langs = ["eng", "jpn", "spa", "fra", "deu", "ita", "por", "rus", "kor", "zho"];
+                    self.cfg.audio_language = cycle_list(&langs, &self.cfg.audio_language, forward);
+                }
+                2 => {
+                    let langs = ["eng", "spa", "fra", "deu", "ita", "jpn", "por", "rus", "kor", "zho"];
+                    self.cfg.sub_language = cycle_list(&langs, &self.cfg.sub_language, forward);
+                }
+                3 => {
+                    self.cfg.auto_play_next = !self.cfg.auto_play_next;
+                }
+                4 => {
+                    let providers = ["auto", "vixsrc", "lookmovie"];
+                    self.cfg.preferred_provider = cycle_list(&providers, &self.cfg.preferred_provider, forward);
+                }
+                5 => {
+                    let hwdecs = ["auto", "auto-safe", "vaapi", "nvdec", "videotoolbox", "no"];
+                    self.cfg.hwdec = cycle_list(&hwdecs, &self.cfg.hwdec, forward);
+                }
+                _ => {}
+            }
+            let _ = self.cfg.save();
+            self.providers = Arc::new(ProviderManager::with_preference(&self.cfg.preferred_provider));
+        }
+    }
+
+    pub fn open_provider_modal_for_selected(&mut self) {
+        if let Some(ref modal) = self.episode_modal {
+            if let Some(ep) = modal.episodes.get(modal.selected_episode_idx) {
+                let season_num = modal.seasons.get(modal.selected_season_idx)
+                    .map(|s| s.season_number)
+                    .unwrap_or(1);
+                let ep_num = ep.episode_number;
+                let title = modal.series.title.clone();
+                let year = modal.series.year.clone();
+                let poster = modal.series.poster_path.clone();
+                let tmdb_id = modal.series.tmdb_id;
+
+                let target_title = format!("{} S{:02}E{:02} — {}", title, season_num, ep_num, ep.name);
+                let request = MediaRequest {
+                    tmdb_id,
+                    media_type: "tv".to_string(),
+                    season: Some(season_num),
+                    episode: Some(ep_num),
+                    title,
+                    year: Some(year),
+                };
+
+                self.provider_modal = Some(ProviderSelectModalState {
+                    target_title,
+                    request,
+                    poster_path: poster,
+                    options: default_provider_options(),
+                    selected_idx: 0,
+                });
+                return;
+            }
+        }
+
+        if let Some(item) = self.current_items.get(self.selected_index).cloned() {
+            if item.media_type == "tv" {
+                let target_title = format!("{} S01E01", item.title);
+                let request = MediaRequest {
+                    tmdb_id: item.tmdb_id,
+                    media_type: "tv".to_string(),
+                    season: Some(1),
+                    episode: Some(1),
+                    title: item.title.clone(),
+                    year: Some(item.year.clone()),
+                };
+                self.provider_modal = Some(ProviderSelectModalState {
+                    target_title,
+                    request,
+                    poster_path: item.poster_path,
+                    options: default_provider_options(),
+                    selected_idx: 0,
+                });
+            } else {
+                let target_title = format!("{} ({})", item.title, item.year);
+                let request = MediaRequest {
+                    tmdb_id: item.tmdb_id,
+                    media_type: "movie".to_string(),
+                    season: None,
+                    episode: None,
+                    title: item.title.clone(),
+                    year: Some(item.year.clone()),
+                };
+                self.provider_modal = Some(ProviderSelectModalState {
+                    target_title,
+                    request,
+                    poster_path: item.poster_path,
+                    options: default_provider_options(),
+                    selected_idx: 0,
+                });
+            }
+        }
+    }
+
+    pub fn provider_modal_next(&mut self) {
+        if let Some(ref mut m) = self.provider_modal {
+            if m.selected_idx + 1 < m.options.len() {
+                m.selected_idx += 1;
+            } else {
+                m.selected_idx = 0;
+            }
+        }
+    }
+
+    pub fn provider_modal_prev(&mut self) {
+        if let Some(ref mut m) = self.provider_modal {
+            if m.selected_idx > 0 {
+                m.selected_idx -= 1;
+            } else {
+                m.selected_idx = m.options.len().saturating_sub(1);
+            }
+        }
+    }
+
+    pub async fn provider_modal_confirm(&mut self) {
+        if let Some(modal) = self.provider_modal.take() {
+            let choice = modal.options.get(modal.selected_idx)
+                .map(|o| o.id.clone())
+                .unwrap_or_else(|| "auto".to_string());
+            let req = modal.request;
+            let poster = modal.poster_path;
+
+            if req.media_type == "tv" {
+                let season = req.season.unwrap_or(1);
+                let episode = req.episode.unwrap_or(1);
+                self.play_tv_series_with_provider(
+                    req.tmdb_id,
+                    &req.title,
+                    req.year.as_deref().unwrap_or(""),
+                    &poster,
+                    season,
+                    episode,
+                    &choice,
+                ).await;
+            } else {
+                self.play_movie_with_provider(
+                    req.tmdb_id,
+                    &req.title,
+                    req.year.as_deref().unwrap_or(""),
+                    &poster,
+                    &choice,
+                ).await;
+            }
+        }
+    }
+
     pub async fn play_movie(&mut self, item: MediaItem) {
-        self.status_message = format!("Resolving stream for '{}'...", item.title);
+        let choice = self.cfg.preferred_provider.clone();
+        self.play_movie_with_provider(item.tmdb_id, &item.title, &item.year, &item.poster_path, &choice).await;
+    }
+
+    pub async fn play_movie_with_provider(
+        &mut self,
+        tmdb_id: i64,
+        title: &str,
+        year: &str,
+        poster_path: &str,
+        provider_choice: &str,
+    ) {
+        let display_name = match provider_choice {
+            "vixsrc" => "VixSrc Server",
+            "lookmovie" => "LookMovie Server",
+            _ => "Auto Fallback",
+        };
+        self.status_message = format!("Resolving '{}' on {} [{}]...", title, display_name, self.cfg.audio_mode.to_uppercase());
 
         let req = MediaRequest {
-            tmdb_id: item.tmdb_id,
+            tmdb_id,
             media_type: "movie".to_string(),
             season: None,
             episode: None,
-            title: item.title.clone(),
-            year: Some(item.year.clone()),
+            title: title.to_string(),
+            year: Some(year.to_string()),
         };
 
-        match self.providers.resolve_with_fallback(&req).await {
+        match self.providers.resolve_with_choice(provider_choice, &req).await {
             Ok(stream) => {
                 let _ = self.db.record_watch(
-                    item.tmdb_id,
+                    tmdb_id,
                     "movie",
-                    &item.title,
-                    &item.year,
-                    &item.poster_path,
+                    title,
+                    year,
+                    poster_path,
                     None,
                     None,
                     None,
@@ -298,10 +545,10 @@ impl App {
                     0,
                 );
 
-                self.launch_mpv_session(&stream, &item.title).await;
+                self.launch_mpv_session(&stream, title).await;
             }
             Err(e) => {
-                self.status_message = format!("Stream error: {}", e);
+                self.status_message = format!("Stream error ({}): {}", display_name, e);
             }
         }
     }
@@ -315,8 +562,27 @@ impl App {
         season: i32,
         episode: i32,
     ) {
+        let choice = self.cfg.preferred_provider.clone();
+        self.play_tv_series_with_provider(tmdb_id, title, year, poster_path, season, episode, &choice).await;
+    }
+
+    pub async fn play_tv_series_with_provider(
+        &mut self,
+        tmdb_id: i64,
+        title: &str,
+        year: &str,
+        poster_path: &str,
+        season: i32,
+        episode: i32,
+        provider_choice: &str,
+    ) {
         let display_title = format!("{} S{:02}E{:02}", title, season, episode);
-        self.status_message = format!("Resolving stream for {}...", display_title);
+        let display_name = match provider_choice {
+            "vixsrc" => "VixSrc Server",
+            "lookmovie" => "LookMovie Server",
+            _ => "Auto Fallback",
+        };
+        self.status_message = format!("Resolving {} on {} [{}]...", display_title, display_name, self.cfg.audio_mode.to_uppercase());
 
         let req = MediaRequest {
             tmdb_id,
@@ -327,7 +593,7 @@ impl App {
             year: Some(year.to_string()),
         };
 
-        match self.providers.resolve_with_fallback(&req).await {
+        match self.providers.resolve_with_choice(provider_choice, &req).await {
             Ok(mut stream) => {
                 let _ = self.db.record_watch(
                     tmdb_id,
@@ -350,7 +616,7 @@ impl App {
                 self.launch_mpv_tv_auto_next(tmdb_id, title, year, poster_path, season, episode, stream).await;
             }
             Err(e) => {
-                self.status_message = format!("Stream error: {}", e);
+                self.status_message = format!("Stream error ({}): {}", display_name, e);
             }
         }
     }
@@ -487,3 +753,51 @@ impl App {
         self.status_message = format!("Returned from watching {} S{:02}E{:02}", title, current_season, current_episode);
     }
 }
+
+fn default_provider_options() -> Vec<ProviderOption> {
+    vec![
+        ProviderOption {
+            id: "auto".to_string(),
+            name: "Auto Fallback Engine".to_string(),
+            description: "Fast multi-provider chain (VixSrc CDN → LookMovie CDN)".to_string(),
+        },
+        ProviderOption {
+            id: "vixsrc".to_string(),
+            name: "VixSrc Server".to_string(),
+            description: "Primary Ultra-Fast CDN • 1080p FHD HLS • Multi-Audio".to_string(),
+        },
+        ProviderOption {
+            id: "lookmovie".to_string(),
+            name: "LookMovie Server".to_string(),
+            description: "High-Reliability Fallback CDN • 1080p/720p/480p • Multi-Subtitles".to_string(),
+        },
+    ]
+}
+
+fn cycle_list(list: &[&str], current: &str, forward: bool) -> String {
+    let current_lower = current.to_lowercase();
+    let idx = list.iter().position(|&x| x == current_lower).unwrap_or(0);
+    let next_idx = if forward {
+        (idx + 1) % list.len()
+    } else {
+        (idx + list.len() - 1) % list.len()
+    };
+    list[next_idx].to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cycle_list_forward_and_backward() {
+        let langs = ["eng", "jpn", "spa"];
+        assert_eq!(cycle_list(&langs, "eng", true), "jpn");
+        assert_eq!(cycle_list(&langs, "jpn", true), "spa");
+        assert_eq!(cycle_list(&langs, "spa", true), "eng");
+
+        assert_eq!(cycle_list(&langs, "eng", false), "spa");
+        assert_eq!(cycle_list(&langs, "spa", false), "jpn");
+    }
+}
+
