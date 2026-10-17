@@ -22,7 +22,7 @@
 
 ---
 
-**KittyMov** is a native, ultra-responsive Terminal UI for discovering, cataloging, and streaming Movies and TV Shows. Designed with a retro-futuristic dark cyber-minimalist aesthetic (obsidian canvas, neon magenta cursor, cyber-cyan double borders), high-speed concurrency, true 24-bit ANSI poster art, and an automated TV episode marathon engine.
+**KittyMov** is a native, ultra-responsive Terminal UI for discovering, cataloging, and streaming Movies and TV Shows. Designed with a retro-futuristic dark cyber-minimalist aesthetic (obsidian canvas, neon magenta cursor, cyber-cyan borders), high-speed concurrency, true 24-bit ANSI poster art, multi-provider stream fallback, dedicated OpenSubtitles integration, and an automated TV episode marathon engine.
 
 Works seamlessly across all Linux distributions (CachyOS, Arch, Debian, Ubuntu, Fedora, Void, NixOS, etc.) and modern terminal emulators (Kitty, Alacritty, Ghostty, Foot, WezTerm, tmux).
 
@@ -31,12 +31,15 @@ Works seamlessly across all Linux distributions (CachyOS, Arch, Debian, Ubuntu, 
 ## ✨ Features
 
 - ⚡ **Native Rust Performance**: Sub-millisecond startup times, compiled release binary under `8 MB`, low RAM usage.
-- 🎨 **BENEXL Cyber-Minimalist Aesthetic**: Obsidian backdrop (`#0b0e14`), glowing cyber-cyan borders (`#00e5ff`), and high-density metadata tables.
-- 🖼️ **True 24-Bit Half-Block Posters**: Custom ANSI SGR tokenizer extracting both foreground and background colors (`38;2` and `48;2`) via `chafa` without terminal escape leakage.
+- 🎨 **Cinematic Cyber-Minimalist Aesthetic**: Obsidian backdrop (`#101113`), warm amber accents (`#E8B875`), and high-density metadata tables.
+- 🖼️ **True 24-Bit Half-Block Posters**: Custom ANSI SGR tokenizer extracting both foreground and background colors (`38;2` and `48;2`) via `chafa` with instant toggle support.
+- 🌐 **Multi-Provider Stream Resilience**: Automatic failover across LookMovie, VixCloud, and VixSrc with interactive provider/server selection modal (`s`).
+- 💬 **External Subtitles & Dual-Audio Engine**: Direct OpenSubtitles API integration for automatic sub downloads, multi-language subtitle selector (`t`), and Sub/Dub audio toggle (`d`).
 - 📺 **TV Episode Marathon Engine**: Seamless auto-play next episode with background pre-fetching during the final 20% of playback and dynamic injection via MPV IPC.
 - 🔄 **Anti-Expiration JIT Link Protection**: Resolves and refreshes HLS master playlist tokens just-in-time before playback to eliminate link expiration errors.
-- 💾 **Local SQLite Persistence**: Tracks watch history, resume timestamps, and favorites in `~/.config/kittymov/kittymov.db`.
-- 🔍 **Interactive Live Search & Episode Guide**: Season-by-season episode browsing with runtime, air date, and synopses.
+- 💾 **Standard XDG Compliance**: Strictly follows XDG Base Directory specification (`$XDG_CONFIG_HOME`, `$XDG_CACHE_HOME`, `$XDG_STATE_HOME`).
+- 🩺 **Built-in System Doctor & Privacy Reports**: Quick environment diagnostic tool (`--doctor`) and redacted diagnostic exports.
+- 🔒 **Security Hardened**: URL scheme filtering (HTTP/HTTPS enforcement), path traversal protection on cache assets, and auto-backup recovery for corrupted configs.
 
 ---
 
@@ -59,9 +62,9 @@ cargo build --release
 install -Dm755 target/release/kittymov ~/.local/bin/kittymov
 ```
 
-*Ensure dependencies are installed:*
-- `mpv` (video player)
-- `chafa` (poster graphics conversion)
+*System Dependencies:*
+- `mpv` (recommended media player with IPC socket support)
+- `chafa` (poster graphics conversion; optional, can be disabled in settings)
 
 ---
 
@@ -70,6 +73,9 @@ install -Dm755 target/release/kittymov ~/.local/bin/kittymov
 ```bash
 # Launch interactive TUI
 kittymov
+
+# Run environment health check and dependency diagnosis
+kittymov --doctor
 
 # Direct search query on launch
 kittymov "Arcane"
@@ -84,10 +90,14 @@ kittymov --resume
 
 ## ⌨️ Keybindings
 
-### Main Catalog
+Press **`?`** or **`F1`** anywhere inside KittyMov to open the contextual Help Modal.
+
+### Global & Main Catalog
 
 | Key | Action |
 | :--- | :--- |
+| `?` / `F1` | Open **Help & Keybindings** modal |
+| `S` / `,` / `F2` | Open **Settings** navigation menu |
 | `1` | **Movies** tab (Trending movies) |
 | `2` | **Series** tab (Trending TV shows) |
 | `3` | **History** tab (Resume watching) |
@@ -96,6 +106,9 @@ kittymov --resume
 | `↑` / `k` | Move cursor up |
 | `↓` / `j` | Move cursor down |
 | `Enter` | Play movie or open **Episode Guide** |
+| `s` | Open **Provider & Server Selector** modal |
+| `t` | Open **Subtitle Language Selector** modal |
+| `d` | Toggle Audio Mode (**Sub** ↔ **Dub**) |
 | `f` | Bookmark / Unbookmark title |
 | `a` | Toggle **Auto-Play Next Episode** (`ON` / `OFF`) |
 | `q` | Quit KittyMov |
@@ -109,14 +122,36 @@ kittymov --resume
 | `↑` / `k` | Previous episode |
 | `↓` / `j` | Next episode |
 | `Enter` | Launch episode in player |
+| `s` | Open Provider/Server selector for current episode |
+| `t` | Change subtitle language |
+| `d` | Toggle Sub / Dub mode |
 | `a` | Toggle Auto-Play mode |
+| `?` / `F1` | Show Help modal |
 | `Esc` | Close modal |
+
+### Settings Menu
+
+| Key | Action |
+| :--- | :--- |
+| `Tab` / `Shift+Tab` | Switch between Category Sidebar and Content Pane |
+| `↑` / `k` | Navigate items |
+| `↓` / `j` | Navigate items |
+| `←` / `→` / `Space` | Adjust numeric values, cycle options, or toggle booleans |
+| `/` | Live fuzzy filter settings across all categories |
+| `r` | Reset current category to factory defaults |
+| `Esc` | Return to category sidebar or close settings |
 
 ---
 
-## ⚙️ Configuration
+## ⚙️ Configuration & XDG Storage
 
-Configuration is located at `~/.config/kittymov/config.json`:
+KittyMov strictly adheres to standard XDG directories:
+
+- **Configuration:** `$XDG_CONFIG_HOME/kittymov/config.json` (defaults to `~/.config/kittymov/config.json`)
+- **Cache:** `$XDG_CACHE_HOME/kittymov/posters/` (defaults to `~/.cache/kittymov/posters/`)
+- **Database & Logs:** `$XDG_STATE_HOME/kittymov/kittymov.db` and `kittymov.log` (defaults to `~/.local/state/kittymov/`)
+
+Sample configuration:
 
 ```json
 {
@@ -125,6 +160,10 @@ Configuration is located at `~/.config/kittymov/config.json`:
   "audio_language": "eng",
   "sub_language": "eng",
   "hwdec": "auto",
+  "preferred_provider": "Auto",
+  "poster_render_mode": "halfblock",
+  "stream_resolution": "1080p",
+  "ui_density": "Comfortable",
   "tmdb_api_key": "653bb8af90162bd98fc7ee32bcbbfb3d",
   "mpv_extra_args": [
     "--save-position-on-quit",
@@ -133,6 +172,9 @@ Configuration is located at `~/.config/kittymov/config.json`:
   ]
 }
 ```
+
+> [!NOTE]
+> Environment variable `TMDB_API_KEY` can be used to override the configured TMDB API key without modifying the configuration file.
 
 ---
 

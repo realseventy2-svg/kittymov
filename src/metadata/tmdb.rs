@@ -1,9 +1,9 @@
+use crate::config::get_cache_dir;
+use reqwest::Client;
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
-use reqwest::Client;
-use serde::Deserialize;
-use crate::config::get_cache_dir;
 
 #[derive(Debug, Clone)]
 pub struct MediaItem {
@@ -158,61 +158,103 @@ impl TmdbClient {
             .build()
             .unwrap_or_else(|_| Client::new());
 
+        let final_key = std::env::var("TMDB_API_KEY").unwrap_or_else(|_| api_key.to_string());
+
         Self {
             client,
-            api_key: api_key.to_string(),
+            api_key: final_key,
             base_url: "https://api.themoviedb.org/3".to_string(),
         }
     }
 
     pub async fn get_trending_movies(&self) -> Result<Vec<MediaItem>, String> {
-        let url = format!("{}/trending/movie/week?api_key={}", self.base_url, self.api_key);
-        let resp: TmdbSearchResponse = self.client.get(&url).send().await
+        let url = format!(
+            "{}/trending/movie/week?api_key={}",
+            self.base_url, self.api_key
+        );
+        let resp: TmdbSearchResponse = self
+            .client
+            .get(&url)
+            .send()
+            .await
             .map_err(|e| e.to_string())?
-            .json().await
+            .json()
+            .await
             .map_err(|e| e.to_string())?;
 
-        Ok(resp.results.into_iter().map(|item| {
-            let year = item.release_date.as_deref().unwrap_or("").chars().take(4).collect();
-            MediaItem {
-                tmdb_id: item.id,
-                media_type: "movie".to_string(),
-                title: item.title.unwrap_or_else(|| "Untitled".to_string()),
-                year,
-                rating: (item.vote_average.unwrap_or(0.0) * 10.0).round() / 10.0,
-                poster_path: item.poster_path.unwrap_or_default(),
-                overview: item.overview.unwrap_or_else(|| "No synopsis available.".to_string()),
-                genres: "Feature Film".to_string(),
-                duration_str: "Movie".to_string(),
-                status: "Released".to_string(),
-                episodes_count: None,
-            }
-        }).collect())
+        Ok(resp
+            .results
+            .into_iter()
+            .map(|item| {
+                let year = item
+                    .release_date
+                    .as_deref()
+                    .unwrap_or("")
+                    .chars()
+                    .take(4)
+                    .collect();
+                MediaItem {
+                    tmdb_id: item.id,
+                    media_type: "movie".to_string(),
+                    title: item.title.unwrap_or_else(|| "Untitled".to_string()),
+                    year,
+                    rating: (item.vote_average.unwrap_or(0.0) * 10.0).round() / 10.0,
+                    poster_path: item.poster_path.unwrap_or_default(),
+                    overview: item
+                        .overview
+                        .unwrap_or_else(|| "No synopsis available.".to_string()),
+                    genres: "Feature Film".to_string(),
+                    duration_str: "Movie".to_string(),
+                    status: "Released".to_string(),
+                    episodes_count: None,
+                }
+            })
+            .collect())
     }
 
     pub async fn get_trending_tv(&self) -> Result<Vec<MediaItem>, String> {
-        let url = format!("{}/trending/tv/week?api_key={}", self.base_url, self.api_key);
-        let resp: TmdbSearchResponse = self.client.get(&url).send().await
+        let url = format!(
+            "{}/trending/tv/week?api_key={}",
+            self.base_url, self.api_key
+        );
+        let resp: TmdbSearchResponse = self
+            .client
+            .get(&url)
+            .send()
+            .await
             .map_err(|e| e.to_string())?
-            .json().await
+            .json()
+            .await
             .map_err(|e| e.to_string())?;
 
-        Ok(resp.results.into_iter().map(|item| {
-            let year = item.first_air_date.as_deref().unwrap_or("").chars().take(4).collect();
-            MediaItem {
-                tmdb_id: item.id,
-                media_type: "tv".to_string(),
-                title: item.name.unwrap_or_else(|| "Untitled".to_string()),
-                year,
-                rating: (item.vote_average.unwrap_or(0.0) * 10.0).round() / 10.0,
-                poster_path: item.poster_path.unwrap_or_default(),
-                overview: item.overview.unwrap_or_else(|| "No synopsis available.".to_string()),
-                genres: "TV Series".to_string(),
-                duration_str: "Series".to_string(),
-                status: "Ongoing".to_string(),
-                episodes_count: None,
-            }
-        }).collect())
+        Ok(resp
+            .results
+            .into_iter()
+            .map(|item| {
+                let year = item
+                    .first_air_date
+                    .as_deref()
+                    .unwrap_or("")
+                    .chars()
+                    .take(4)
+                    .collect();
+                MediaItem {
+                    tmdb_id: item.id,
+                    media_type: "tv".to_string(),
+                    title: item.name.unwrap_or_else(|| "Untitled".to_string()),
+                    year,
+                    rating: (item.vote_average.unwrap_or(0.0) * 10.0).round() / 10.0,
+                    poster_path: item.poster_path.unwrap_or_default(),
+                    overview: item
+                        .overview
+                        .unwrap_or_else(|| "No synopsis available.".to_string()),
+                    genres: "TV Series".to_string(),
+                    duration_str: "Series".to_string(),
+                    status: "Ongoing".to_string(),
+                    episodes_count: None,
+                }
+            })
+            .collect())
     }
 
     pub async fn search_multi(&self, query: &str) -> Result<Vec<MediaItem>, String> {
@@ -222,9 +264,14 @@ impl TmdbClient {
             self.api_key,
             urlencoding::encode(query)
         );
-        let resp: TmdbSearchResponse = self.client.get(&url).send().await
+        let resp: TmdbSearchResponse = self
+            .client
+            .get(&url)
+            .send()
+            .await
             .map_err(|e| e.to_string())?
-            .json().await
+            .json()
+            .await
             .map_err(|e| e.to_string())?;
 
         let mut list = Vec::new();
@@ -235,7 +282,11 @@ impl TmdbClient {
             }
             let is_movie = m_type == "movie";
             let title = if is_movie { item.title } else { item.name };
-            let date = if is_movie { item.release_date } else { item.first_air_date };
+            let date = if is_movie {
+                item.release_date
+            } else {
+                item.first_air_date
+            };
             let year = date.as_deref().unwrap_or("").chars().take(4).collect();
 
             list.push(MediaItem {
@@ -245,9 +296,19 @@ impl TmdbClient {
                 year,
                 rating: (item.vote_average.unwrap_or(0.0) * 10.0).round() / 10.0,
                 poster_path: item.poster_path.unwrap_or_default(),
-                overview: item.overview.unwrap_or_else(|| "No synopsis available.".to_string()),
-                genres: if is_movie { "Movie".to_string() } else { "Series".to_string() },
-                duration_str: if is_movie { "Feature".to_string() } else { "Multi-Episode".to_string() },
+                overview: item
+                    .overview
+                    .unwrap_or_else(|| "No synopsis available.".to_string()),
+                genres: if is_movie {
+                    "Movie".to_string()
+                } else {
+                    "Series".to_string()
+                },
+                duration_str: if is_movie {
+                    "Feature".to_string()
+                } else {
+                    "Multi-Episode".to_string()
+                },
                 status: "Available".to_string(),
                 episodes_count: None,
             });
@@ -257,16 +318,38 @@ impl TmdbClient {
 
     #[allow(dead_code)]
     pub async fn get_movie_details(&self, tmdb_id: i64) -> Result<MediaItem, String> {
-        let url = format!("{}/movie/{}?api_key={}", self.base_url, tmdb_id, self.api_key);
-        let d: TmdbMovieDetails = self.client.get(&url).send().await
+        let url = format!(
+            "{}/movie/{}?api_key={}",
+            self.base_url, tmdb_id, self.api_key
+        );
+        let d: TmdbMovieDetails = self
+            .client
+            .get(&url)
+            .send()
+            .await
             .map_err(|e| e.to_string())?
-            .json().await
+            .json()
+            .await
             .map_err(|e| e.to_string())?;
 
-        let genres = d.genres.unwrap_or_default()
-            .into_iter().map(|g| g.name).collect::<Vec<_>>().join(", ");
-        let year = d.release_date.as_deref().unwrap_or("").chars().take(4).collect();
-        let runtime = d.runtime.map(|r| format!("{} min", r)).unwrap_or_else(|| "N/A".to_string());
+        let genres = d
+            .genres
+            .unwrap_or_default()
+            .into_iter()
+            .map(|g| g.name)
+            .collect::<Vec<_>>()
+            .join(", ");
+        let year = d
+            .release_date
+            .as_deref()
+            .unwrap_or("")
+            .chars()
+            .take(4)
+            .collect();
+        let runtime = d
+            .runtime
+            .map(|r| format!("{} min", r))
+            .unwrap_or_else(|| "N/A".to_string());
 
         Ok(MediaItem {
             tmdb_id: d.id,
@@ -276,7 +359,11 @@ impl TmdbClient {
             rating: (d.vote_average.unwrap_or(0.0) * 10.0).round() / 10.0,
             poster_path: d.poster_path.unwrap_or_default(),
             overview: d.overview.unwrap_or_default(),
-            genres: if genres.is_empty() { "Movie".to_string() } else { genres },
+            genres: if genres.is_empty() {
+                "Movie".to_string()
+            } else {
+                genres
+            },
             duration_str: runtime,
             status: d.status.unwrap_or_else(|| "Released".to_string()),
             episodes_count: None,
@@ -286,19 +373,45 @@ impl TmdbClient {
     pub async fn get_tv_details(
         &self,
         tmdb_id: i64,
-    ) -> Result<(MediaItem, Vec<TvSeason>, Option<HashMap<i32, Vec<TvEpisode>>>), String> {
+    ) -> Result<
+        (
+            MediaItem,
+            Vec<TvSeason>,
+            Option<HashMap<i32, Vec<TvEpisode>>>,
+        ),
+        String,
+    > {
         let url = format!("{}/tv/{}?api_key={}", self.base_url, tmdb_id, self.api_key);
-        let d: TmdbTvDetails = self.client.get(&url).send().await
+        let d: TmdbTvDetails = self
+            .client
+            .get(&url)
+            .send()
+            .await
             .map_err(|e| e.to_string())?
-            .json().await
+            .json()
+            .await
             .map_err(|e| e.to_string())?;
 
-        let genres = d.genres.unwrap_or_default()
-            .into_iter().map(|g| g.name).collect::<Vec<_>>().join(", ");
-        let year = d.first_air_date.as_deref().unwrap_or("").chars().take(4).collect();
+        let genres = d
+            .genres
+            .unwrap_or_default()
+            .into_iter()
+            .map(|g| g.name)
+            .collect::<Vec<_>>()
+            .join(", ");
+        let year = d
+            .first_air_date
+            .as_deref()
+            .unwrap_or("")
+            .chars()
+            .take(4)
+            .collect();
 
         // Check if there is an episode group matching Streaming or Digital Order
-        let groups_url = format!("{}/tv/{}/episode_groups?api_key={}", self.base_url, tmdb_id, self.api_key);
+        let groups_url = format!(
+            "{}/tv/{}/episode_groups?api_key={}",
+            self.base_url, tmdb_id, self.api_key
+        );
         let mut chosen_group_id = None;
         if let Ok(resp) = self.client.get(&groups_url).send().await {
             if let Ok(groups_data) = resp.json::<EpisodeGroupsResponse>().await {
@@ -323,7 +436,10 @@ impl TmdbClient {
 
         // If a streaming/digital group was found, fetch it
         if let Some(group_id) = chosen_group_id {
-            let group_url = format!("{}/tv/episode_group/{}?api_key={}", self.base_url, group_id, self.api_key);
+            let group_url = format!(
+                "{}/tv/episode_group/{}?api_key={}",
+                self.base_url, group_id, self.api_key
+            );
             if let Ok(resp) = self.client.get(&group_url).send().await {
                 if let Ok(group_data) = resp.json::<EpisodeGroupDetails>().await {
                     let mut seasons = Vec::new();
@@ -336,7 +452,11 @@ impl TmdbClient {
                         if g.episodes.is_empty() || g.name.to_lowercase().contains("specials") {
                             continue;
                         }
-                        let s_num = if g.order > 0 { g.order } else { (seasons.len() + 1) as i32 };
+                        let s_num = if g.order > 0 {
+                            g.order
+                        } else {
+                            (seasons.len() + 1) as i32
+                        };
                         seasons.push(TvSeason {
                             season_number: s_num,
                             name: g.name.clone(),
@@ -346,7 +466,10 @@ impl TmdbClient {
                         let mut eps = Vec::new();
                         for ep in g.episodes {
                             let ep_num = ep.order.map(|o| o + 1).or(ep.episode_number).unwrap_or(1);
-                            let dur = ep.runtime.map(|r| format!("{}m", r)).unwrap_or_else(|| "24m".to_string());
+                            let dur = ep
+                                .runtime
+                                .map(|r| format!("{}m", r))
+                                .unwrap_or_else(|| "24m".to_string());
                             eps.push(TvEpisode {
                                 episode_number: ep_num,
                                 name: ep.name.unwrap_or_else(|| format!("Episode {}", ep_num)),
@@ -367,7 +490,11 @@ impl TmdbClient {
                             rating: (d.vote_average.unwrap_or(0.0) * 10.0).round() / 10.0,
                             poster_path: d.poster_path.unwrap_or_default(),
                             overview: d.overview.unwrap_or_default(),
-                            genres: if genres.is_empty() { "TV Series".to_string() } else { genres },
+                            genres: if genres.is_empty() {
+                                "TV Series".to_string()
+                            } else {
+                                genres
+                            },
                             duration_str: format!("{} Seasons", seasons.len()),
                             status: d.status.unwrap_or_else(|| "Series".to_string()),
                             episodes_count: d.number_of_episodes,
@@ -385,7 +512,9 @@ impl TmdbClient {
                 if s.season_number > 0 {
                     seasons.push(TvSeason {
                         season_number: s.season_number,
-                        name: s.name.unwrap_or_else(|| format!("Season {}", s.season_number)),
+                        name: s
+                            .name
+                            .unwrap_or_else(|| format!("Season {}", s.season_number)),
                         episode_count: s.episode_count.unwrap_or(0),
                     });
                 }
@@ -400,7 +529,11 @@ impl TmdbClient {
             rating: (d.vote_average.unwrap_or(0.0) * 10.0).round() / 10.0,
             poster_path: d.poster_path.unwrap_or_default(),
             overview: d.overview.unwrap_or_default(),
-            genres: if genres.is_empty() { "TV Series".to_string() } else { genres },
+            genres: if genres.is_empty() {
+                "TV Series".to_string()
+            } else {
+                genres
+            },
             duration_str: format!("{} Seasons", seasons.len()),
             status: d.status.unwrap_or_else(|| "Series".to_string()),
             episodes_count: d.number_of_episodes,
@@ -409,40 +542,71 @@ impl TmdbClient {
         Ok((item, seasons, None))
     }
 
-    pub async fn get_season_episodes(&self, tmdb_id: i64, season: i32) -> Result<Vec<TvEpisode>, String> {
-        let url = format!("{}/tv/{}/season/{}?api_key={}", self.base_url, tmdb_id, season, self.api_key);
-        let resp: TmdbSeasonResponse = self.client.get(&url).send().await
+    pub async fn get_season_episodes(
+        &self,
+        tmdb_id: i64,
+        season: i32,
+    ) -> Result<Vec<TvEpisode>, String> {
+        let url = format!(
+            "{}/tv/{}/season/{}?api_key={}",
+            self.base_url, tmdb_id, season, self.api_key
+        );
+        let resp: TmdbSeasonResponse = self
+            .client
+            .get(&url)
+            .send()
+            .await
             .map_err(|e| e.to_string())?
-            .json().await
+            .json()
+            .await
             .map_err(|e| e.to_string())?;
 
-        Ok(resp.episodes.into_iter().map(|ep| {
-            let dur = ep.runtime.map(|r| format!("{}m", r)).unwrap_or_else(|| "24m".to_string());
-            TvEpisode {
-                episode_number: ep.episode_number,
-                name: ep.name.unwrap_or_else(|| format!("Episode {}", ep.episode_number)),
-                overview: ep.overview.unwrap_or_default(),
-                air_date: ep.air_date.unwrap_or_else(|| "—".to_string()),
-                duration: dur,
-            }
-        }).collect())
+        Ok(resp
+            .episodes
+            .into_iter()
+            .map(|ep| {
+                let dur = ep
+                    .runtime
+                    .map(|r| format!("{}m", r))
+                    .unwrap_or_else(|| "24m".to_string());
+                TvEpisode {
+                    episode_number: ep.episode_number,
+                    name: ep
+                        .name
+                        .unwrap_or_else(|| format!("Episode {}", ep.episode_number)),
+                    overview: ep.overview.unwrap_or_default(),
+                    air_date: ep.air_date.unwrap_or_else(|| "—".to_string()),
+                    duration: dur,
+                }
+            })
+            .collect())
     }
 
     pub async fn get_imdb_id(&self, tmdb_id: i64, media_type: &str) -> Result<String, String> {
         let endpoint = if media_type == "tv" { "tv" } else { "movie" };
-        let url = format!("{}/{}/{}/external_ids?api_key={}", self.base_url, endpoint, tmdb_id, self.api_key);
+        let url = format!(
+            "{}/{}/{}/external_ids?api_key={}",
+            self.base_url, endpoint, tmdb_id, self.api_key
+        );
 
         #[derive(Deserialize)]
         struct ExternalIdsResp {
             imdb_id: Option<String>,
         }
 
-        let resp = self.client.get(&url).send().await
+        let resp = self
+            .client
+            .get(&url)
+            .send()
+            .await
             .map_err(|e| format!("Failed to request external IDs: {}", e))?;
-        let data: ExternalIdsResp = resp.json().await
+        let data: ExternalIdsResp = resp
+            .json()
+            .await
             .map_err(|e| format!("Failed to parse external IDs JSON: {}", e))?;
 
-        data.imdb_id.filter(|s| !s.is_empty())
+        data.imdb_id
+            .filter(|s| !s.is_empty())
             .ok_or_else(|| format!("No IMDb ID found for {} {}", media_type, tmdb_id))
     }
 
@@ -450,13 +614,27 @@ impl TmdbClient {
         if poster_path.is_empty() {
             return None;
         }
-        let filename = poster_path.trim_start_matches('/');
-        let local_path = get_cache_dir().join("posters").join(filename);
+        // Securely extract only the file name component to prevent path traversal
+        let raw_filename = std::path::Path::new(poster_path)
+            .file_name()
+            .and_then(|f| f.to_str())
+            .unwrap_or("");
+
+        let clean_filename: String = raw_filename
+            .chars()
+            .filter(|c| c.is_alphanumeric() || *c == '.' || *c == '_' || *c == '-')
+            .collect();
+
+        if clean_filename.is_empty() || clean_filename.starts_with('.') {
+            return None;
+        }
+
+        let local_path = get_cache_dir().join("posters").join(&clean_filename);
         if local_path.exists() && local_path.metadata().map(|m| m.len() > 0).unwrap_or(false) {
             return Some(local_path);
         }
 
-        let url = format!("https://image.tmdb.org/t/p/w342/{}", filename);
+        let url = format!("https://image.tmdb.org/t/p/w342/{}", clean_filename);
         if let Ok(resp) = self.client.get(&url).send().await {
             if let Ok(bytes) = resp.bytes().await {
                 if std::fs::write(&local_path, bytes).is_ok() {
@@ -481,9 +659,15 @@ mod tests {
     #[tokio::test]
     async fn test_streaming_episode_group_steven_universe() {
         let client = TmdbClient::new("653bb8af90162bd98fc7ee32bcbbfb3d");
-        let (item, seasons, episodes_map) = client.get_tv_details(61175).await.expect("Failed to fetch SU details");
+        let (item, seasons, episodes_map) = client
+            .get_tv_details(61175)
+            .await
+            .expect("Failed to fetch SU details");
         assert_eq!(item.title, "Steven Universe");
-        assert!(episodes_map.is_some(), "Streaming episodes map should be present for Steven Universe");
+        assert!(
+            episodes_map.is_some(),
+            "Streaming episodes map should be present for Steven Universe"
+        );
         let map = episodes_map.unwrap();
         let s3 = map.get(&3).expect("Season 3 should exist");
         assert_eq!(s3.len(), 28, "Season 3 should have 28 streaming episodes");

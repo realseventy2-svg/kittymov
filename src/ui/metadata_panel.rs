@@ -45,7 +45,10 @@ pub fn render_metadata_panel(
         let p = Paragraph::new(vec![
             Line::from(""),
             Line::from(""),
-            Line::from(Span::styled("[ No Artwork ]", Style::default().fg(Theme::TEXT_MUTED))),
+            Line::from(Span::styled(
+                "[ No Artwork ]",
+                Style::default().fg(Theme::TEXT_MUTED),
+            )),
         ])
         .block(poster_block)
         .alignment(Alignment::Center);
@@ -57,7 +60,9 @@ pub fn render_metadata_panel(
         let title_lines = vec![
             Line::from(Span::styled(
                 &media.title,
-                Style::default().fg(Theme::TEXT_TITLE).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Theme::TEXT_TITLE)
+                    .add_modifier(Modifier::BOLD),
             )),
             Line::from(Span::styled(
                 "────────────────────────────────────────────────",
@@ -76,29 +81,53 @@ pub fn render_metadata_panel(
         } else {
             "SERIES"
         };
-        let format_label = if media.media_type == "movie" { "MOVIE" } else { "TV SERIES" };
+        let format_label = if media.media_type == "movie" {
+            "MOVIE"
+        } else {
+            "TV SERIES"
+        };
 
         let rows = vec![
             Line::from(vec![
                 Span::styled("Score       ", Style::default().fg(Theme::ACCENT_CYAN)),
-                Span::styled(format!("{} {:.1}", stars, media.rating), Style::default().fg(Theme::ACCENT_GOLD)),
+                Span::styled(
+                    format!("{} {:.1}", stars, media.rating),
+                    Style::default().fg(Theme::ACCENT_GOLD),
+                ),
             ]),
             Line::from(vec![
                 Span::styled("Saved       ", Style::default().fg(Theme::ACCENT_CYAN)),
                 Span::styled(
-                    if is_bookmarked { "★ Bookmarked" } else { "—" },
-                    Style::default().fg(if is_bookmarked { Theme::ACCENT_PINK } else { Theme::TEXT_MUTED }),
+                    if is_bookmarked {
+                        "★ Bookmarked"
+                    } else {
+                        "—"
+                    },
+                    Style::default().fg(if is_bookmarked {
+                        Theme::ACCENT_PINK
+                    } else {
+                        Theme::TEXT_MUTED
+                    }),
                 ),
             ]),
             Line::from(vec![
                 Span::styled("Status      ", Style::default().fg(Theme::ACCENT_CYAN)),
-                Span::styled(status.to_uppercase(), Style::default().fg(Theme::ACCENT_GREEN)),
+                Span::styled(
+                    status.to_uppercase(),
+                    Style::default().fg(Theme::ACCENT_GREEN),
+                ),
             ]),
-            Line::from(Span::styled("────────────────────────────────────────────────", Style::default().fg(Theme::BORDER_MUTED))),
+            Line::from(Span::styled(
+                "────────────────────────────────────────────────",
+                Style::default().fg(Theme::BORDER_MUTED),
+            )),
             Line::from(vec![
                 Span::styled("Episodes    ", Style::default().fg(Theme::ACCENT_CYAN)),
                 Span::styled(
-                    media.episodes_count.map(|c| c.to_string()).unwrap_or_else(|| "1".to_string()),
+                    media
+                        .episodes_count
+                        .map(|c| c.to_string())
+                        .unwrap_or_else(|| "1".to_string()),
                     Style::default().fg(Theme::TEXT_BODY),
                 ),
             ]),
@@ -106,19 +135,31 @@ pub fn render_metadata_panel(
                 Span::styled("Duration    ", Style::default().fg(Theme::ACCENT_CYAN)),
                 Span::styled(&media.duration_str, Style::default().fg(Theme::TEXT_BODY)),
             ]),
-            Line::from(Span::styled("────────────────────────────────────────────────", Style::default().fg(Theme::BORDER_MUTED))),
+            Line::from(Span::styled(
+                "────────────────────────────────────────────────",
+                Style::default().fg(Theme::BORDER_MUTED),
+            )),
             Line::from(vec![
                 Span::styled("Genres      ", Style::default().fg(Theme::ACCENT_CYAN)),
                 Span::styled(&media.genres, Style::default().fg(Theme::TEXT_BODY)),
             ]),
             Line::from(vec![
                 Span::styled("Format      ", Style::default().fg(Theme::ACCENT_CYAN)),
-                Span::styled(format_label, Style::default().fg(Theme::ACCENT_PINK).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    format_label,
+                    Style::default()
+                        .fg(Theme::ACCENT_PINK)
+                        .add_modifier(Modifier::BOLD),
+                ),
             ]),
-            Line::from(Span::styled("────────────────────────────────────────────────", Style::default().fg(Theme::BORDER_MUTED))),
-            Line::from(vec![
-                Span::styled("Overview    ", Style::default().fg(Theme::ACCENT_CYAN)),
-            ]),
+            Line::from(Span::styled(
+                "────────────────────────────────────────────────",
+                Style::default().fg(Theme::BORDER_MUTED),
+            )),
+            Line::from(vec![Span::styled(
+                "Overview    ",
+                Style::default().fg(Theme::ACCENT_CYAN),
+            )]),
             Line::from(Span::styled(
                 &media.overview,
                 Style::default().fg(Theme::TEXT_MUTED),
@@ -128,9 +169,10 @@ pub fn render_metadata_panel(
         let table_p = Paragraph::new(rows).wrap(Wrap { trim: true });
         f.render_widget(table_p, chunks[2]);
     } else {
-        let p = Paragraph::new(vec![
-            Line::from(Span::styled("Select an item to view metadata", Style::default().fg(Theme::TEXT_MUTED))),
-        ]);
+        let p = Paragraph::new(vec![Line::from(Span::styled(
+            "Select an item to view metadata",
+            Style::default().fg(Theme::TEXT_MUTED),
+        ))]);
         f.render_widget(p, chunks[1]);
     }
 }

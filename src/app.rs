@@ -107,7 +107,7 @@ impl SettingsCategory {
             SettingsCategory::Playback => 5,
             SettingsCategory::Providers => 3,
             SettingsCategory::Appearance => 3,
-            SettingsCategory::Storage => 4,
+            SettingsCategory::Storage => 5,
         }
     }
 }
@@ -116,6 +116,7 @@ impl SettingsCategory {
 pub enum SettingsConfirmation {
     ClearPosterCache,
     ClearWatchHistory,
+    ExportDiagnostics,
     ResetDefaults,
 }
 
@@ -361,6 +362,14 @@ pub fn get_all_settings_metadata(cfg: &Config) -> Vec<SettingMatch> {
             category: SettingsCategory::Storage,
             category_idx: 4,
             item_idx: 3,
+            label: "Export Diagnostic Report",
+            value_str: "[ Export Sanitized Report ]".to_string(),
+            description: "Generate a privacy-redacted diagnostic summary for troubleshooting and bug reporting.",
+        },
+        SettingMatch {
+            category: SettingsCategory::Storage,
+            category_idx: 4,
+            item_idx: 4,
             label: "Factory Reset",
             value_str: "[ Reset All to Factory Defaults ]".to_string(),
             description: "Restore all configuration options to their original defaults without deleting history.",
@@ -413,6 +422,7 @@ pub struct App {
     pub subtitle_modal: Option<SubtitleSelectModalState>,
     pub settings_modal: Option<SettingsModalState>,
     pub subtitles: Arc<crate::subtitles::SubtitleManager>,
+    pub show_help: bool,
     pub should_quit: bool,
 }
 
@@ -439,8 +449,13 @@ impl App {
             provider_modal: None,
             subtitle_modal: None,
             settings_modal: None,
+            show_help: false,
             should_quit: false,
         }
+    }
+
+    pub fn toggle_help(&mut self) {
+        self.show_help = !self.show_help;
     }
 
     pub async fn init(&mut self) {
@@ -455,7 +470,8 @@ impl App {
                         &latest.poster_path,
                         latest.season.unwrap_or(1),
                         latest.episode.unwrap_or(1),
-                    ).await;
+                    )
+                    .await;
                     return;
                 } else {
                     self.play_movie(crate::metadata::MediaItem {
@@ -470,7 +486,8 @@ impl App {
                         duration_str: format!("{}m", latest.progress_seconds / 60),
                         status: "History".to_string(),
                         episodes_count: None,
-                    }).await;
+                    })
+                    .await;
                     return;
                 }
             }
@@ -516,46 +533,62 @@ impl App {
             ActiveTab::History => {
                 self.status_message = "Loading watch history...".to_string();
                 if let Ok(hist) = self.db.get_history(50) {
-                    self.current_items = hist.into_iter().map(|h| {
-                        let is_tv = h.media_type == "tv";
-                        let title = if is_tv {
-                            format!("{} S{:02}E{:02}", h.title, h.season.unwrap_or(1), h.episode.unwrap_or(1))
-                        } else {
-                            h.title
-                        };
-                        MediaItem {
-                            tmdb_id: h.tmdb_id,
-                            media_type: h.media_type,
-                            title,
-                            year: h.year,
-                            rating: 0.0,
-                            poster_path: h.poster_path,
-                            overview: format!("Last watched: {}", h.last_watched),
-                            genres: if is_tv { "Series".to_string() } else { "Movie".to_string() },
-                            duration_str: format!("{}m", h.progress_seconds / 60),
-                            status: "History".to_string(),
-                            episodes_count: None,
-                        }
-                    }).collect();
-                    self.status_message = format!("Loaded {} history items", self.current_items.len());
+                    self.current_items = hist
+                        .into_iter()
+                        .map(|h| {
+                            let is_tv = h.media_type == "tv";
+                            let title = if is_tv {
+                                format!(
+                                    "{} S{:02}E{:02}",
+                                    h.title,
+                                    h.season.unwrap_or(1),
+                                    h.episode.unwrap_or(1)
+                                )
+                            } else {
+                                h.title
+                            };
+                            MediaItem {
+                                tmdb_id: h.tmdb_id,
+                                media_type: h.media_type,
+                                title,
+                                year: h.year,
+                                rating: 0.0,
+                                poster_path: h.poster_path,
+                                overview: format!("Last watched: {}", h.last_watched),
+                                genres: if is_tv {
+                                    "Series".to_string()
+                                } else {
+                                    "Movie".to_string()
+                                },
+                                duration_str: format!("{}m", h.progress_seconds / 60),
+                                status: "History".to_string(),
+                                episodes_count: None,
+                            }
+                        })
+                        .collect();
+                    self.status_message =
+                        format!("Loaded {} history items", self.current_items.len());
                 }
             }
             ActiveTab::Bookmarks => {
                 self.status_message = "Loading bookmarks...".to_string();
                 if let Ok(favs) = self.db.get_favorites() {
-                    self.current_items = favs.into_iter().map(|f| MediaItem {
-                        tmdb_id: f.tmdb_id,
-                        media_type: f.media_type,
-                        title: f.title,
-                        year: f.year,
-                        rating: f.rating,
-                        poster_path: f.poster_path,
-                        overview: f.overview,
-                        genres: "Saved".to_string(),
-                        duration_str: "Bookmark".to_string(),
-                        status: "Saved".to_string(),
-                        episodes_count: None,
-                    }).collect();
+                    self.current_items = favs
+                        .into_iter()
+                        .map(|f| MediaItem {
+                            tmdb_id: f.tmdb_id,
+                            media_type: f.media_type,
+                            title: f.title,
+                            year: f.year,
+                            rating: f.rating,
+                            poster_path: f.poster_path,
+                            overview: f.overview,
+                            genres: "Saved".to_string(),
+                            duration_str: "Bookmark".to_string(),
+                            status: "Saved".to_string(),
+                            episodes_count: None,
+                        })
+                        .collect();
                     self.status_message = format!("Loaded {} bookmarks", self.current_items.len());
                 }
             }
@@ -582,6 +615,10 @@ impl App {
     }
 
     pub async fn update_poster(&mut self) {
+        if self.cfg.poster_render_mode == "off" {
+            self.current_poster_text = None;
+            return;
+        }
         if let Some(item) = self.current_items.get(self.selected_index) {
             if !item.poster_path.is_empty() {
                 if let Some(path) = self.tmdb.get_cached_poster(&item.poster_path).await {
@@ -636,7 +673,9 @@ impl App {
         if let Some(ref mut modal) = self.episode_modal {
             // Watch selected episode from modal
             if let Some(ep) = modal.episodes.get(modal.selected_episode_idx) {
-                let season_num = modal.seasons.get(modal.selected_season_idx)
+                let season_num = modal
+                    .seasons
+                    .get(modal.selected_season_idx)
                     .map(|s| s.season_number)
                     .unwrap_or(1);
                 let ep_num = ep.episode_number;
@@ -645,7 +684,8 @@ impl App {
                 let poster = modal.series.poster_path.clone();
                 let tmdb_id = modal.series.tmdb_id;
 
-                self.play_tv_series(tmdb_id, &title, &year, &poster, season_num, ep_num).await;
+                self.play_tv_series(tmdb_id, &title, &year, &poster, season_num, ep_num)
+                    .await;
             }
             return;
         }
@@ -661,12 +701,17 @@ impl App {
 
     pub async fn open_episode_modal(&mut self, item: MediaItem) {
         self.status_message = format!("Loading seasons for {}...", item.title);
-        if let Ok((_details, seasons, stream_episodes_map)) = self.tmdb.get_tv_details(item.tmdb_id).await {
+        if let Ok((_details, seasons, stream_episodes_map)) =
+            self.tmdb.get_tv_details(item.tmdb_id).await
+        {
             let first_season = seasons.first().map(|s| s.season_number).unwrap_or(1);
             let episodes = if let Some(ref map) = stream_episodes_map {
                 map.get(&first_season).cloned().unwrap_or_default()
             } else {
-                self.tmdb.get_season_episodes(item.tmdb_id, first_season).await.unwrap_or_default()
+                self.tmdb
+                    .get_season_episodes(item.tmdb_id, first_season)
+                    .await
+                    .unwrap_or_default()
             };
 
             self.episode_modal = Some(EpisodeModalState {
@@ -715,7 +760,9 @@ impl App {
 
     pub fn save_settings(&mut self) {
         let _ = self.cfg.save();
-        self.providers = Arc::new(ProviderManager::with_preference(&self.cfg.preferred_provider));
+        self.providers = Arc::new(ProviderManager::with_preference(
+            &self.cfg.preferred_provider,
+        ));
     }
 
     pub fn settings_switch_pane(&mut self) {
@@ -774,7 +821,8 @@ impl App {
 
             match s.active_pane {
                 SettingsPane::Categories => {
-                    s.category_idx = (s.category_idx + SettingsCategory::ALL.len() - 1) % SettingsCategory::ALL.len();
+                    s.category_idx = (s.category_idx + SettingsCategory::ALL.len() - 1)
+                        % SettingsCategory::ALL.len();
                     s.item_idx = 0;
                 }
                 SettingsPane::Content => {
@@ -832,11 +880,16 @@ impl App {
                         };
                     }
                     1 => {
-                        let langs = ["eng", "jpn", "spa", "fra", "deu", "ita", "por", "rus", "kor", "zho"];
-                        self.cfg.audio_language = cycle_list(&langs, &self.cfg.audio_language, forward);
+                        let langs = [
+                            "eng", "jpn", "spa", "fra", "deu", "ita", "por", "rus", "kor", "zho",
+                        ];
+                        self.cfg.audio_language =
+                            cycle_list(&langs, &self.cfg.audio_language, forward);
                     }
                     2 => {
-                        let langs = ["eng", "spa", "fra", "deu", "ita", "jpn", "por", "rus", "kor", "zho"];
+                        let langs = [
+                            "eng", "spa", "fra", "deu", "ita", "jpn", "por", "rus", "kor", "zho",
+                        ];
                         self.cfg.sub_language = cycle_list(&langs, &self.cfg.sub_language, forward);
                     }
                     3 => {
@@ -851,7 +904,8 @@ impl App {
                 SettingsCategory::Providers => match s.item_idx {
                     0 => {
                         let providers = ["auto", "vixsrc", "lookmovie"];
-                        self.cfg.preferred_provider = cycle_list(&providers, &self.cfg.preferred_provider, forward);
+                        self.cfg.preferred_provider =
+                            cycle_list(&providers, &self.cfg.preferred_provider, forward);
                     }
                     1 => {
                         self.cfg.subtitle_augmentation = !self.cfg.subtitle_augmentation;
@@ -865,7 +919,8 @@ impl App {
                     }
                     1 => {
                         let modes = ["half-block", "off"];
-                        self.cfg.poster_render_mode = cycle_list(&modes, &self.cfg.poster_render_mode, forward);
+                        self.cfg.poster_render_mode =
+                            cycle_list(&modes, &self.cfg.poster_render_mode, forward);
                     }
                     _ => {}
                 },
@@ -877,45 +932,67 @@ impl App {
                         s.confirmation = Some(SettingsConfirmation::ClearWatchHistory);
                     }
                     3 => {
+                        s.confirmation = Some(SettingsConfirmation::ExportDiagnostics);
+                    }
+                    4 => {
                         s.confirmation = Some(SettingsConfirmation::ResetDefaults);
                     }
                     _ => {}
                 },
             }
             let _ = self.cfg.save();
-            self.providers = Arc::new(ProviderManager::with_preference(&self.cfg.preferred_provider));
+            self.providers = Arc::new(ProviderManager::with_preference(
+                &self.cfg.preferred_provider,
+            ));
         }
     }
 
-    pub fn settings_execute_confirmation(&mut self) {
+    pub async fn settings_execute_confirmation(&mut self) {
         if let Some(ref mut s) = self.settings_modal {
             if let Some(ref conf) = s.confirmation.clone() {
                 match conf {
                     SettingsConfirmation::ClearPosterCache => {
                         match crate::config::clear_poster_cache() {
                             Ok(count) => {
-                                s.feedback_message = Some(format!("Poster cache cleared ({} files removed)", count));
+                                s.feedback_message =
+                                    Some(format!("Poster cache cleared ({} files removed)", count));
                             }
                             Err(e) => {
                                 s.feedback_message = Some(format!("Failed to clear cache: {}", e));
                             }
                         }
                     }
-                    SettingsConfirmation::ClearWatchHistory => {
-                        match self.db.clear_history() {
-                            Ok(count) => {
-                                s.feedback_message = Some(format!("Watch history cleared ({} records removed)", count));
+                    SettingsConfirmation::ClearWatchHistory => match self.db.clear_history() {
+                        Ok(count) => {
+                            s.feedback_message =
+                                Some(format!("Watch history cleared ({} records removed)", count));
+                        }
+                        Err(e) => {
+                            s.feedback_message = Some(format!("Failed to clear history: {}", e));
+                        }
+                    },
+                    SettingsConfirmation::ExportDiagnostics => {
+                        match crate::diagnostics::generate_diagnostic_report(&self.cfg, &self.db)
+                            .await
+                        {
+                            Ok(path) => {
+                                s.feedback_message =
+                                    Some(format!("Exported diagnostic report: {}", path.display()));
                             }
                             Err(e) => {
-                                s.feedback_message = Some(format!("Failed to clear history: {}", e));
+                                s.feedback_message =
+                                    Some(format!("Failed to export report: {}", e));
                             }
                         }
                     }
                     SettingsConfirmation::ResetDefaults => {
                         self.cfg.reset_to_defaults();
                         let _ = self.cfg.save();
-                        self.providers = Arc::new(ProviderManager::with_preference(&self.cfg.preferred_provider));
-                        s.feedback_message = Some("All settings restored to factory defaults".to_string());
+                        self.providers = Arc::new(ProviderManager::with_preference(
+                            &self.cfg.preferred_provider,
+                        ));
+                        s.feedback_message =
+                            Some("All settings restored to factory defaults".to_string());
                     }
                 }
                 s.confirmation = None;
@@ -959,7 +1036,9 @@ impl App {
                 }
             }
             let _ = self.cfg.save();
-            self.providers = Arc::new(ProviderManager::with_preference(&self.cfg.preferred_provider));
+            self.providers = Arc::new(ProviderManager::with_preference(
+                &self.cfg.preferred_provider,
+            ));
             s.feedback_message = Some(format!("Reset {} settings to defaults", cat.title()));
         }
     }
@@ -967,7 +1046,9 @@ impl App {
     pub fn open_provider_modal_for_selected(&mut self) {
         if let Some(ref modal) = self.episode_modal {
             if let Some(ep) = modal.episodes.get(modal.selected_episode_idx) {
-                let season_num = modal.seasons.get(modal.selected_season_idx)
+                let season_num = modal
+                    .seasons
+                    .get(modal.selected_season_idx)
                     .map(|s| s.season_number)
                     .unwrap_or(1);
                 let ep_num = ep.episode_number;
@@ -976,7 +1057,8 @@ impl App {
                 let poster = modal.series.poster_path.clone();
                 let tmdb_id = modal.series.tmdb_id;
 
-                let target_title = format!("{} S{:02}E{:02} — {}", title, season_num, ep_num, ep.name);
+                let target_title =
+                    format!("{} S{:02}E{:02} — {}", title, season_num, ep_num, ep.name);
                 let request = MediaRequest {
                     tmdb_id,
                     media_type: "tv".to_string(),
@@ -1058,7 +1140,9 @@ impl App {
 
     pub async fn provider_modal_confirm(&mut self) {
         if let Some(modal) = self.provider_modal.take() {
-            let choice = modal.options.get(modal.selected_idx)
+            let choice = modal
+                .options
+                .get(modal.selected_idx)
                 .map(|o| o.id.clone())
                 .unwrap_or_else(|| "auto".to_string());
             let req = modal.request;
@@ -1075,7 +1159,8 @@ impl App {
                     season,
                     episode,
                     &choice,
-                ).await;
+                )
+                .await;
             } else {
                 self.play_movie_with_provider(
                     req.tmdb_id,
@@ -1083,42 +1168,76 @@ impl App {
                     req.year.as_deref().unwrap_or(""),
                     &poster,
                     &choice,
-                ).await;
+                )
+                .await;
             }
         }
     }
 
     pub async fn open_subtitle_modal(&mut self) {
-        let (tmdb_id, media_type, season, episode, target_title) = if let Some(ref modal) = self.episode_modal {
-            if let Some(ep) = modal.episodes.get(modal.selected_episode_idx) {
-                let season_num = modal.seasons.get(modal.selected_season_idx)
-                    .map(|s| s.season_number)
-                    .unwrap_or(1);
-                let ep_num = ep.episode_number;
-                let title = modal.series.title.clone();
-                (modal.series.tmdb_id, "tv".to_string(), Some(season_num), Some(ep_num), format!("{} S{:02}E{:02}", title, season_num, ep_num))
+        let (tmdb_id, media_type, season, episode, target_title) =
+            if let Some(ref modal) = self.episode_modal {
+                if let Some(ep) = modal.episodes.get(modal.selected_episode_idx) {
+                    let season_num = modal
+                        .seasons
+                        .get(modal.selected_season_idx)
+                        .map(|s| s.season_number)
+                        .unwrap_or(1);
+                    let ep_num = ep.episode_number;
+                    let title = modal.series.title.clone();
+                    (
+                        modal.series.tmdb_id,
+                        "tv".to_string(),
+                        Some(season_num),
+                        Some(ep_num),
+                        format!("{} S{:02}E{:02}", title, season_num, ep_num),
+                    )
+                } else {
+                    return;
+                }
+            } else if let Some(ref modal) = self.provider_modal {
+                let req = &modal.request;
+                (
+                    req.tmdb_id,
+                    req.media_type.clone(),
+                    req.season,
+                    req.episode,
+                    modal.target_title.clone(),
+                )
+            } else if let Some(item) = self.current_items.get(self.selected_index).cloned() {
+                if item.media_type == "tv" {
+                    (
+                        item.tmdb_id,
+                        "tv".to_string(),
+                        Some(1),
+                        Some(1),
+                        format!("{} S01E01", item.title),
+                    )
+                } else {
+                    (
+                        item.tmdb_id,
+                        "movie".to_string(),
+                        None,
+                        None,
+                        format!("{} ({})", item.title, item.year),
+                    )
+                }
             } else {
                 return;
-            }
-        } else if let Some(ref modal) = self.provider_modal {
-            let req = &modal.request;
-            (req.tmdb_id, req.media_type.clone(), req.season, req.episode, modal.target_title.clone())
-        } else if let Some(item) = self.current_items.get(self.selected_index).cloned() {
-            if item.media_type == "tv" {
-                (item.tmdb_id, "tv".to_string(), Some(1), Some(1), format!("{} S01E01", item.title))
-            } else {
-                (item.tmdb_id, "movie".to_string(), None, None, format!("{} ({})", item.title, item.year))
-            }
-        } else {
-            return;
-        };
+            };
 
         self.status_message = format!("Searching OpenSubtitles for {}...", target_title);
         let imdb_id = self.tmdb.get_imdb_id(tmdb_id, &media_type).await.ok();
-        let tracks = self.subtitles.fetch_all_subtitles(imdb_id.as_deref(), &media_type, season, episode).await;
+        let tracks = self
+            .subtitles
+            .fetch_all_subtitles(imdb_id.as_deref(), &media_type, season, episode)
+            .await;
         let groups = crate::subtitles::SubtitleManager::group_by_language(&tracks);
 
-        let selected_idx = groups.iter().position(|g| g.lang_code == self.cfg.sub_language).unwrap_or(0);
+        let selected_idx = groups
+            .iter()
+            .position(|g| g.lang_code == self.cfg.sub_language)
+            .unwrap_or(0);
 
         self.subtitle_modal = Some(SubtitleSelectModalState {
             target_title,
@@ -1153,14 +1272,24 @@ impl App {
             if let Some(opt) = modal.options.get(modal.selected_idx) {
                 self.cfg.sub_language = opt.lang_code.clone();
                 let _ = self.cfg.save();
-                self.status_message = format!("Subtitle Language set to: {} [{}]", opt.lang_name, opt.lang_code);
+                self.status_message = format!(
+                    "Subtitle Language set to: {} [{}]",
+                    opt.lang_name, opt.lang_code
+                );
             }
         }
     }
 
     pub async fn play_movie(&mut self, item: MediaItem) {
         let choice = self.cfg.preferred_provider.clone();
-        self.play_movie_with_provider(item.tmdb_id, &item.title, &item.year, &item.poster_path, &choice).await;
+        self.play_movie_with_provider(
+            item.tmdb_id,
+            &item.title,
+            &item.year,
+            &item.poster_path,
+            &choice,
+        )
+        .await;
     }
 
     pub async fn play_movie_with_provider(
@@ -1176,7 +1305,12 @@ impl App {
             "lookmovie" => "LookMovie Server",
             _ => "Auto Fallback",
         };
-        self.status_message = format!("Resolving '{}' on {} [{}]...", title, display_name, self.cfg.audio_mode.to_uppercase());
+        self.status_message = format!(
+            "Resolving '{}' on {} [{}]...",
+            title,
+            display_name,
+            self.cfg.audio_mode.to_uppercase()
+        );
 
         let req = MediaRequest {
             tmdb_id,
@@ -1187,20 +1321,30 @@ impl App {
             year: Some(year.to_string()),
         };
 
-        match self.providers.resolve_with_choice(provider_choice, &req).await {
+        match self
+            .providers
+            .resolve_with_choice(provider_choice, &req)
+            .await
+        {
             Ok(mut stream) => {
                 // Augment with dedicated Subtitle Provider (OpenSubtitles)
                 if stream.subtitles.is_empty() || self.cfg.subtitle_augmentation {
-                    self.status_message = format!("Fetching subtitles for '{}' [{}]...", title, self.cfg.sub_language);
-                    let external_subs = self.subtitles.prepare_subtitles(
-                        &self.tmdb,
-                        tmdb_id,
-                        title,
-                        "movie",
-                        None,
-                        None,
-                        &self.cfg.sub_language,
-                    ).await;
+                    self.status_message = format!(
+                        "Fetching subtitles for '{}' [{}]...",
+                        title, self.cfg.sub_language
+                    );
+                    let external_subs = self
+                        .subtitles
+                        .prepare_subtitles(
+                            &self.tmdb,
+                            tmdb_id,
+                            title,
+                            "movie",
+                            None,
+                            None,
+                            &self.cfg.sub_language,
+                        )
+                        .await;
                     if !external_subs.is_empty() {
                         stream.subtitles = external_subs;
                     }
@@ -1237,9 +1381,19 @@ impl App {
         episode: i32,
     ) {
         let choice = self.cfg.preferred_provider.clone();
-        self.play_tv_series_with_provider(tmdb_id, title, year, poster_path, season, episode, &choice).await;
+        self.play_tv_series_with_provider(
+            tmdb_id,
+            title,
+            year,
+            poster_path,
+            season,
+            episode,
+            &choice,
+        )
+        .await;
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn play_tv_series_with_provider(
         &mut self,
         tmdb_id: i64,
@@ -1256,7 +1410,12 @@ impl App {
             "lookmovie" => "LookMovie Server",
             _ => "Auto Fallback",
         };
-        self.status_message = format!("Resolving {} on {} [{}]...", display_title, display_name, self.cfg.audio_mode.to_uppercase());
+        self.status_message = format!(
+            "Resolving {} on {} [{}]...",
+            display_title,
+            display_name,
+            self.cfg.audio_mode.to_uppercase()
+        );
 
         let req = MediaRequest {
             tmdb_id,
@@ -1267,20 +1426,30 @@ impl App {
             year: Some(year.to_string()),
         };
 
-        match self.providers.resolve_with_choice(provider_choice, &req).await {
+        match self
+            .providers
+            .resolve_with_choice(provider_choice, &req)
+            .await
+        {
             Ok(mut stream) => {
                 // Augment with dedicated Subtitle Provider (OpenSubtitles)
                 if stream.subtitles.is_empty() || self.cfg.subtitle_augmentation {
-                    self.status_message = format!("Fetching subtitles for {} [{}]...", display_title, self.cfg.sub_language);
-                    let external_subs = self.subtitles.prepare_subtitles(
-                        &self.tmdb,
-                        tmdb_id,
-                        title,
-                        "tv",
-                        Some(season),
-                        Some(episode),
-                        &self.cfg.sub_language,
-                    ).await;
+                    self.status_message = format!(
+                        "Fetching subtitles for {} [{}]...",
+                        display_title, self.cfg.sub_language
+                    );
+                    let external_subs = self
+                        .subtitles
+                        .prepare_subtitles(
+                            &self.tmdb,
+                            tmdb_id,
+                            title,
+                            "tv",
+                            Some(season),
+                            Some(episode),
+                            &self.cfg.sub_language,
+                        )
+                        .await;
                     if !external_subs.is_empty() {
                         stream.subtitles = external_subs;
                     }
@@ -1304,7 +1473,16 @@ impl App {
                     let _ = self.providers.refresh_candidate(&mut stream).await;
                 }
 
-                self.launch_mpv_tv_auto_next(tmdb_id, title, year, poster_path, season, episode, stream).await;
+                self.launch_mpv_tv_auto_next(
+                    tmdb_id,
+                    title,
+                    year,
+                    poster_path,
+                    season,
+                    episode,
+                    stream,
+                )
+                .await;
             }
             Err(e) => {
                 self.status_message = format!("Stream error ({}): {}", display_name, e);
@@ -1318,17 +1496,31 @@ impl App {
         crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen).ok();
 
         let mut controller = MpvController::new();
-        if let Ok(()) = controller.start_player(stream, title, &self.cfg) {
-            let _ = controller.wait_sync();
-        }
+        let result = match controller.start_player(stream, title, &self.cfg) {
+            Ok(()) => {
+                let _ = controller.wait_async().await;
+                Ok(())
+            }
+            Err(e) => Err(e),
+        };
 
         // Restore terminal for Ratatui
         crossterm::terminal::enable_raw_mode().ok();
         crossterm::execute!(std::io::stdout(), crossterm::terminal::EnterAlternateScreen).ok();
-        self.status_message = format!("Finished watching '{}' [{}]", title, stream.provider_name);
+
+        match result {
+            Ok(()) => {
+                self.status_message =
+                    format!("Finished watching '{}' [{}]", title, stream.provider_name);
+            }
+            Err(e) => {
+                self.status_message = format!("Playback launch error: {}", e);
+            }
+        }
     }
 
     /// Full Auto-Play Next Episode Engine with background prefetching and JIT token refreshing
+    #[allow(clippy::too_many_arguments)]
     async fn launch_mpv_tv_auto_next(
         &mut self,
         tmdb_id: i64,
@@ -1349,113 +1541,164 @@ impl App {
             format!("{} S{:02}E{:02}", title, current_season, current_episode)
         };
 
-        if let Ok(()) = controller.start_player(&initial_stream, &display_title, &self.cfg) {
-            let (status_tx, mut status_rx) = mpsc::channel(32);
+        let result = match controller.start_player(&initial_stream, &display_title, &self.cfg) {
+            Ok(()) => {
+                let (status_tx, mut status_rx) = mpsc::channel(32);
 
-            if let Ok(socket) = controller.wait_for_socket(Duration::from_secs(4)).await {
-                controller.monitor_ipc(socket, status_tx);
+                if let Ok(socket) = controller.wait_for_socket(Duration::from_secs(4)).await {
+                    controller.monitor_ipc(socket, status_tx);
 
-                let mut prefetch_started = false;
+                    let mut prefetch_started = false;
 
-                while let Some(status) = status_rx.recv().await {
-                    match status {
-                        PlaybackStatus::Playing { pos, duration } => {
-                            // When progress reaches 80% (or last 3 minutes), start pre-resolving next episode
-                            if self.cfg.auto_play_next && !prefetch_started && (duration > 0.0 && pos / duration >= 0.8 || pos >= 1200.0) {
-                                prefetch_started = true;
-                                let providers = self.providers.clone();
-                                let next_req = MediaRequest {
-                                    tmdb_id,
-                                    media_type: "tv".to_string(),
-                                    season: Some(current_season),
-                                    episode: Some(current_episode + 1),
-                                    title: title.to_string(),
-                                    year: Some(year.to_string()),
-                                };
-
-                                tokio::spawn(async move {
-                                    providers.resolve_with_fallback(&next_req).await
-                                });
-                            }
-                        }
-                        PlaybackStatus::EofReached => {
-                            if self.cfg.auto_play_next {
-                                current_episode += 1;
-                                let next_req = MediaRequest {
-                                    tmdb_id,
-                                    media_type: "tv".to_string(),
-                                    season: Some(current_season),
-                                    episode: Some(current_episode),
-                                    title: title.to_string(),
-                                    year: Some(year.to_string()),
-                                };
-
-                                if let Ok(mut next_stream) = self.providers.resolve_with_fallback(&next_req).await {
-                                    // JIT token refresh to ensure no expired links
-                                    if next_stream.is_expired_or_expiring_soon() {
-                                        let _ = self.providers.refresh_candidate(&mut next_stream).await;
-                                    }
-                                    if next_stream.subtitles.is_empty() || self.cfg.subtitle_augmentation {
-                                        let external_subs = self.subtitles.prepare_subtitles(
-                                            &self.tmdb,
-                                            tmdb_id,
-                                            title,
-                                            "tv",
-                                            Some(current_season),
-                                            Some(current_episode),
-                                            &self.cfg.sub_language,
-                                        ).await;
-                                        if !external_subs.is_empty() {
-                                            next_stream.subtitles = external_subs;
-                                        }
-                                    }
-
-                                    // Seamlessly inject next episode into running MPV window!
-                                    if let Some(ref embed) = next_stream.embed_url {
-                                        let _ = controller.send_command(&["set_property", "referrer", embed]).await;
-                                    }
-                                    let next_title = if let Some(ref act) = next_stream.actual_title {
-                                        format!("{} — {}", title, act)
-                                    } else {
-                                        format!("{} S{:02}E{:02}", title, current_season, current_episode)
-                                    };
-                                    let _ = controller.send_command(&["set_property", "title", &format!("KittyMov: {} [{}]", next_title, next_stream.provider_name)]).await;
-                                    for sub in &next_stream.subtitles {
-                                        let _ = controller.send_command(&["sub-add", sub, "auto"]).await;
-                                    }
-                                    let _ = controller.send_command(&["loadfile", &next_stream.stream_url, "replace"]).await;
-
-                                    let _ = self.db.record_watch(
+                    while let Some(status) = status_rx.recv().await {
+                        match status {
+                            PlaybackStatus::Playing { pos, duration } => {
+                                // When progress reaches 80% (or last 3 minutes), start pre-resolving next episode
+                                if self.cfg.auto_play_next
+                                    && !prefetch_started
+                                    && (duration > 0.0 && pos / duration >= 0.8 || pos >= 1200.0)
+                                {
+                                    prefetch_started = true;
+                                    let providers = self.providers.clone();
+                                    let next_req = MediaRequest {
                                         tmdb_id,
-                                        "tv",
-                                        title,
-                                        year,
-                                        poster_path,
-                                        Some(current_season),
-                                        Some(current_episode),
-                                        None,
-                                        0,
-                                        0,
-                                    );
-                                    prefetch_started = false;
-                                    continue;
+                                        media_type: "tv".to_string(),
+                                        season: Some(current_season),
+                                        episode: Some(current_episode + 1),
+                                        title: title.to_string(),
+                                        year: Some(year.to_string()),
+                                    };
+
+                                    tokio::spawn(async move {
+                                        providers.resolve_with_fallback(&next_req).await
+                                    });
                                 }
                             }
-                            break;
+                            PlaybackStatus::EofReached => {
+                                if self.cfg.auto_play_next {
+                                    current_episode += 1;
+                                    let next_req = MediaRequest {
+                                        tmdb_id,
+                                        media_type: "tv".to_string(),
+                                        season: Some(current_season),
+                                        episode: Some(current_episode),
+                                        title: title.to_string(),
+                                        year: Some(year.to_string()),
+                                    };
+
+                                    if let Ok(mut next_stream) =
+                                        self.providers.resolve_with_fallback(&next_req).await
+                                    {
+                                        // JIT token refresh to ensure no expired links
+                                        if next_stream.is_expired_or_expiring_soon() {
+                                            let _ = self
+                                                .providers
+                                                .refresh_candidate(&mut next_stream)
+                                                .await;
+                                        }
+                                        if next_stream.subtitles.is_empty()
+                                            || self.cfg.subtitle_augmentation
+                                        {
+                                            let external_subs = self
+                                                .subtitles
+                                                .prepare_subtitles(
+                                                    &self.tmdb,
+                                                    tmdb_id,
+                                                    title,
+                                                    "tv",
+                                                    Some(current_season),
+                                                    Some(current_episode),
+                                                    &self.cfg.sub_language,
+                                                )
+                                                .await;
+                                            if !external_subs.is_empty() {
+                                                next_stream.subtitles = external_subs;
+                                            }
+                                        }
+
+                                        // Seamlessly inject next episode into running MPV window!
+                                        if let Some(ref embed) = next_stream.embed_url {
+                                            let _ = controller
+                                                .send_command(&["set_property", "referrer", embed])
+                                                .await;
+                                        }
+                                        let next_title =
+                                            if let Some(ref act) = next_stream.actual_title {
+                                                format!("{} — {}", title, act)
+                                            } else {
+                                                format!(
+                                                    "{} S{:02}E{:02}",
+                                                    title, current_season, current_episode
+                                                )
+                                            };
+                                        let _ = controller
+                                            .send_command(&[
+                                                "set_property",
+                                                "title",
+                                                &format!(
+                                                    "KittyMov: {} [{}]",
+                                                    next_title, next_stream.provider_name
+                                                ),
+                                            ])
+                                            .await;
+                                        for sub in &next_stream.subtitles {
+                                            let _ = controller
+                                                .send_command(&["sub-add", sub, "auto"])
+                                                .await;
+                                        }
+                                        let _ = controller
+                                            .send_command(&[
+                                                "loadfile",
+                                                &next_stream.stream_url,
+                                                "replace",
+                                            ])
+                                            .await;
+
+                                        let _ = self.db.record_watch(
+                                            tmdb_id,
+                                            "tv",
+                                            title,
+                                            year,
+                                            poster_path,
+                                            Some(current_season),
+                                            Some(current_episode),
+                                            None,
+                                            0,
+                                            0,
+                                        );
+                                        prefetch_started = false;
+                                        continue;
+                                    }
+                                }
+                                break;
+                            }
+                            PlaybackStatus::UserQuit => {
+                                break;
+                            }
+                            _ => {}
                         }
-                        PlaybackStatus::UserQuit => {
-                            break;
-                        }
-                        _ => {}
                     }
                 }
+                let _ = controller.wait_async().await;
+                Ok(())
             }
-            let _ = controller.wait_sync();
-        }
+            Err(e) => Err(e),
+        };
 
         crossterm::terminal::enable_raw_mode().ok();
         crossterm::execute!(std::io::stdout(), crossterm::terminal::EnterAlternateScreen).ok();
-        self.status_message = format!("Returned from watching {} S{:02}E{:02}", title, current_season, current_episode);
+
+        match result {
+            Ok(()) => {
+                self.status_message = format!(
+                    "Returned from watching {} S{:02}E{:02}",
+                    title, current_season, current_episode
+                );
+            }
+            Err(e) => {
+                self.status_message = format!("Playback launch error: {}", e);
+            }
+        }
     }
 }
 
@@ -1474,7 +1717,8 @@ fn default_provider_options() -> Vec<ProviderOption> {
         ProviderOption {
             id: "lookmovie".to_string(),
             name: "LookMovie Server".to_string(),
-            description: "High-Reliability Fallback CDN • 1080p/720p/480p • Multi-Subtitles".to_string(),
+            description: "High-Reliability Fallback CDN • 1080p/720p/480p • Multi-Subtitles"
+                .to_string(),
         },
     ]
 }
@@ -1512,7 +1756,7 @@ mod tests {
         assert_eq!(SettingsCategory::Playback.item_count(), 5);
         assert_eq!(SettingsCategory::Providers.item_count(), 3);
         assert_eq!(SettingsCategory::Appearance.item_count(), 3);
-        assert_eq!(SettingsCategory::Storage.item_count(), 4);
+        assert_eq!(SettingsCategory::Storage.item_count(), 5);
     }
 
     #[test]
@@ -1533,11 +1777,17 @@ mod tests {
 
         // Switch pane to Content
         app.settings_switch_pane();
-        assert_eq!(app.settings_modal.as_ref().unwrap().active_pane, SettingsPane::Content);
+        assert_eq!(
+            app.settings_modal.as_ref().unwrap().active_pane,
+            SettingsPane::Content
+        );
 
         // Switch back to Categories
         app.settings_switch_pane();
-        assert_eq!(app.settings_modal.as_ref().unwrap().active_pane, SettingsPane::Categories);
+        assert_eq!(
+            app.settings_modal.as_ref().unwrap().active_pane,
+            SettingsPane::Categories
+        );
 
         // Category navigation wraps around
         app.settings_next();
@@ -1555,7 +1805,7 @@ mod tests {
         app.settings_prev();
         assert_eq!(app.settings_modal.as_ref().unwrap().item_idx, 0);
         app.settings_prev();
-        assert_eq!(app.settings_modal.as_ref().unwrap().item_idx, 3); // Storage has 4 items (0..3)
+        assert_eq!(app.settings_modal.as_ref().unwrap().item_idx, 4); // Storage has 5 items (0..4)
     }
 
     #[test]
@@ -1573,9 +1823,9 @@ mod tests {
         assert_ne!(app.cfg.default_tab, initial_tab);
 
         app.settings_modal.as_mut().unwrap().item_idx = 1; // Resume on startup
-        assert_eq!(app.cfg.resume_on_startup, false);
+        assert!(!app.cfg.resume_on_startup);
         app.settings_change_value(true);
-        assert_eq!(app.cfg.resume_on_startup, true);
+        assert!(app.cfg.resume_on_startup);
 
         // Playback Category (category_idx = 1)
         app.settings_modal.as_mut().unwrap().category_idx = 1;
@@ -1592,9 +1842,11 @@ mod tests {
 
     #[test]
     fn test_settings_category_reset() {
-        let mut cfg = Config::default();
-        cfg.default_tab = "history".to_string();
-        cfg.resume_on_startup = true;
+        let cfg = Config {
+            default_tab: "history".to_string(),
+            resume_on_startup: true,
+            ..Config::default()
+        };
 
         let db = Database::in_memory().unwrap();
         let mut app = App::new(cfg, db);
@@ -1605,8 +1857,13 @@ mod tests {
         app.settings_reset_current_category();
 
         assert_eq!(app.cfg.default_tab, "movies");
-        assert_eq!(app.cfg.resume_on_startup, false);
-        assert!(app.settings_modal.as_ref().unwrap().feedback_message.is_some());
+        assert!(!app.cfg.resume_on_startup);
+        assert!(app
+            .settings_modal
+            .as_ref()
+            .unwrap()
+            .feedback_message
+            .is_some());
     }
 
     #[test]
@@ -1615,7 +1872,9 @@ mod tests {
 
         let sub_matches = search_settings_matches(&cfg, "sub");
         assert!(!sub_matches.is_empty());
-        assert!(sub_matches.iter().any(|m| m.label.to_lowercase().contains("subtitle")));
+        assert!(sub_matches
+            .iter()
+            .any(|m| m.label.to_lowercase().contains("subtitle")));
 
         let theme_matches = search_settings_matches(&cfg, "theme");
         assert!(!theme_matches.is_empty());
@@ -1625,17 +1884,17 @@ mod tests {
         assert!(empty_matches.is_empty());
     }
 
-    #[test]
-    fn test_settings_confirmation_workflow() {
+    #[tokio::test]
+    async fn test_settings_confirmation_workflow() {
         let cfg = Config::default();
         let db = Database::in_memory().unwrap();
         let mut app = App::new(cfg, db);
         app.toggle_settings();
 
-        // Go to Storage -> Reset Defaults
+        // Go to Storage -> Reset Defaults (item 4)
         app.settings_modal.as_mut().unwrap().category_idx = 4;
         app.settings_modal.as_mut().unwrap().active_pane = SettingsPane::Content;
-        app.settings_modal.as_mut().unwrap().item_idx = 3; // Reset Defaults action
+        app.settings_modal.as_mut().unwrap().item_idx = 4; // Reset Defaults action
 
         app.settings_change_value(true);
         assert_eq!(
@@ -1650,9 +1909,13 @@ mod tests {
         // Trigger again and execute
         app.settings_change_value(true);
         assert!(app.settings_modal.as_ref().unwrap().confirmation.is_some());
-        app.settings_execute_confirmation();
+        app.settings_execute_confirmation().await;
         assert_eq!(app.settings_modal.as_ref().unwrap().confirmation, None);
-        assert!(app.settings_modal.as_ref().unwrap().feedback_message.is_some());
+        assert!(app
+            .settings_modal
+            .as_ref()
+            .unwrap()
+            .feedback_message
+            .is_some());
     }
 }
-

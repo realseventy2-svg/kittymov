@@ -1,1 +1,8 @@
 /target
+*.log
+*.tmp
+*.bak*
+diagnostic_report*.json
+.vscode/
+.idea/
+.DS_Store

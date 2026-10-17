@@ -90,7 +90,11 @@ impl ProviderManager {
 
     /// Resolves using a specific provider by identifier ("auto", "vixsrc", "lookmovie").
     /// If "auto", performs full fallback across configured providers.
-    pub async fn resolve_with_choice(&self, choice: &str, req: &MediaRequest) -> Result<StreamCandidate, String> {
+    pub async fn resolve_with_choice(
+        &self,
+        choice: &str,
+        req: &MediaRequest,
+    ) -> Result<StreamCandidate, String> {
         let key = choice.to_lowercase();
         let mut candidate = if key.contains("vixsrc") {
             let mut res = None;
@@ -125,10 +129,15 @@ impl ProviderManager {
         };
 
         // If candidate has no external subtitles, opportunistically augment from LookMovie with a short timeout
-        if candidate.subtitles.is_empty() && !candidate.provider_name.to_lowercase().contains("lookmovie") {
+        if candidate.subtitles.is_empty()
+            && !candidate.provider_name.to_lowercase().contains("lookmovie")
+        {
             for provider in &self.providers {
                 if provider.name().to_lowercase().contains("lookmovie") {
-                    if let Ok(Ok(look_cand)) = tokio::time::timeout(Duration::from_millis(2500), provider.resolve(req)).await {
+                    if let Ok(Ok(look_cand)) =
+                        tokio::time::timeout(Duration::from_millis(2500), provider.resolve(req))
+                            .await
+                    {
                         if !look_cand.subtitles.is_empty() {
                             candidate.subtitles = look_cand.subtitles;
                         }
@@ -148,16 +157,26 @@ impl ProviderManager {
 
     /// Tries each provider in sequential priority order until one succeeds.
     /// Returns the first working StreamCandidate, or an aggregate error if all fail.
-    pub async fn resolve_with_fallback(&self, req: &MediaRequest) -> Result<StreamCandidate, String> {
+    pub async fn resolve_with_fallback(
+        &self,
+        req: &MediaRequest,
+    ) -> Result<StreamCandidate, String> {
         let mut failures = Vec::new();
 
         for provider in &self.providers {
             match provider.resolve(req).await {
                 Ok(mut candidate) => {
-                    if candidate.subtitles.is_empty() && !candidate.provider_name.to_lowercase().contains("lookmovie") {
+                    if candidate.subtitles.is_empty()
+                        && !candidate.provider_name.to_lowercase().contains("lookmovie")
+                    {
                         for p in &self.providers {
                             if p.name().to_lowercase().contains("lookmovie") {
-                                if let Ok(Ok(look_cand)) = tokio::time::timeout(Duration::from_millis(2500), p.resolve(req)).await {
+                                if let Ok(Ok(look_cand)) = tokio::time::timeout(
+                                    Duration::from_millis(2500),
+                                    p.resolve(req),
+                                )
+                                .await
+                                {
                                     if !look_cand.subtitles.is_empty() {
                                         candidate.subtitles = look_cand.subtitles;
                                     }
@@ -234,8 +253,14 @@ mod tests {
     #[tokio::test]
     async fn test_provider_manager_fallback_success() {
         let mgr = ProviderManager::with_providers(vec![
-            Arc::new(MockProvider { name: "MockBroken", succeed: false }),
-            Arc::new(MockProvider { name: "MockWorking", succeed: true }),
+            Arc::new(MockProvider {
+                name: "MockBroken",
+                succeed: false,
+            }),
+            Arc::new(MockProvider {
+                name: "MockWorking",
+                succeed: true,
+            }),
         ]);
 
         let req = MediaRequest {
@@ -257,8 +282,14 @@ mod tests {
     #[tokio::test]
     async fn test_provider_manager_all_failed() {
         let mgr = ProviderManager::with_providers(vec![
-            Arc::new(MockProvider { name: "Broken1", succeed: false }),
-            Arc::new(MockProvider { name: "Broken2", succeed: false }),
+            Arc::new(MockProvider {
+                name: "Broken1",
+                succeed: false,
+            }),
+            Arc::new(MockProvider {
+                name: "Broken2",
+                succeed: false,
+            }),
         ]);
 
         let req = MediaRequest {
@@ -290,7 +321,11 @@ mod tests {
         };
 
         let res = provider.resolve(&req).await;
-        assert!(res.is_ok(), "LookMovie should resolve Fight Club: {:?}", res.err());
+        assert!(
+            res.is_ok(),
+            "LookMovie should resolve Fight Club: {:?}",
+            res.err()
+        );
         let candidate = res.unwrap();
         assert!(candidate.stream_url.contains(".m3u8"));
         assert_eq!(candidate.provider_name, "LookMovie (Fallback CDN)");
@@ -310,14 +345,24 @@ mod tests {
 
         let res = provider.resolve(&req).await;
         println!("LookMovie TV show result: {:?}", res);
-        assert!(res.is_ok(), "LookMovie should resolve Steven Universe: {:?}", res.err());
+        assert!(
+            res.is_ok(),
+            "LookMovie should resolve Steven Universe: {:?}",
+            res.err()
+        );
     }
 
     #[tokio::test]
     async fn test_provider_manager_resolve_with_choice() {
         let mgr = ProviderManager::with_providers(vec![
-            Arc::new(MockProvider { name: "vixsrc_server", succeed: true }),
-            Arc::new(MockProvider { name: "lookmovie_server", succeed: true }),
+            Arc::new(MockProvider {
+                name: "vixsrc_server",
+                succeed: true,
+            }),
+            Arc::new(MockProvider {
+                name: "lookmovie_server",
+                succeed: true,
+            }),
         ]);
 
         let req = MediaRequest {

@@ -8,6 +8,7 @@ use super::banner::get_banner_lines;
 use super::theme::Theme;
 use crate::metadata::MediaItem;
 
+#[allow(clippy::too_many_arguments)]
 pub fn render_catalog_panel(
     f: &mut Frame,
     area: Rect,
@@ -47,13 +48,20 @@ pub fn render_catalog_panel(
     let search_block = Block::default()
         .borders(Borders::ALL)
         .border_style(if is_searching {
-            Style::default().fg(Theme::ACCENT_PINK).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(Theme::ACCENT_PINK)
+                .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(Theme::BORDER_MUTED)
         })
         .style(Style::default().bg(Theme::SURFACE))
-        .title(Span::styled(search_title, Style::default().fg(Theme::ACCENT_CYAN)))
-        .title(Span::styled(counter, Style::default().fg(Theme::TEXT_MUTED)).into_right_aligned_line());
+        .title(Span::styled(
+            search_title,
+            Style::default().fg(Theme::ACCENT_CYAN),
+        ))
+        .title(
+            Span::styled(counter, Style::default().fg(Theme::TEXT_MUTED)).into_right_aligned_line(),
+        );
 
     let display_query = if is_searching {
         format!("Search: {}█", search_query)
@@ -63,16 +71,17 @@ pub fn render_catalog_panel(
         format!("Search: {}", search_query)
     };
 
-    let search_p = Paragraph::new(Line::from(vec![
-        Span::styled(
-            display_query,
-            if is_searching {
-                Style::default().fg(Theme::TEXT_TITLE).add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(Theme::TEXT_MUTED)
-            },
-        ),
-    ])).block(search_block);
+    let search_p = Paragraph::new(Line::from(vec![Span::styled(
+        display_query,
+        if is_searching {
+            Style::default()
+                .fg(Theme::TEXT_TITLE)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Theme::TEXT_MUTED)
+        },
+    )]))
+    .block(search_block);
     f.render_widget(search_p, chunks[1]);
 
     // 3. Interactive Media List
@@ -102,21 +111,34 @@ pub fn render_catalog_panel(
 
             let line = if is_selected {
                 Line::from(vec![
-                    Span::styled(" ◆ ", Style::default().fg(Theme::ACCENT_PINK).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        " ◆ ",
+                        Style::default()
+                            .fg(Theme::ACCENT_PINK)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                     Span::styled(
                         &item.title,
-                        Style::default().fg(Theme::TEXT_TITLE).bg(Theme::SELECTION_BG).add_modifier(Modifier::BOLD),
+                        Style::default()
+                            .fg(Theme::TEXT_TITLE)
+                            .bg(Theme::SELECTION_BG)
+                            .add_modifier(Modifier::BOLD),
                     ),
                     Span::styled(
                         format!(" ({})", item.year),
-                        Style::default().fg(Theme::ACCENT_CYAN).bg(Theme::SELECTION_BG),
+                        Style::default()
+                            .fg(Theme::ACCENT_CYAN)
+                            .bg(Theme::SELECTION_BG),
                     ),
                 ])
             } else {
                 Line::from(vec![
                     Span::styled("   ", Style::default()),
                     Span::styled(&item.title, Style::default().fg(Theme::TEXT_BODY)),
-                    Span::styled(format!(" ({})", item.year), Style::default().fg(Theme::TEXT_MUTED)),
+                    Span::styled(
+                        format!(" ({})", item.year),
+                        Style::default().fg(Theme::TEXT_MUTED),
+                    ),
                 ])
             };
             list_lines.push(line);
@@ -129,9 +151,19 @@ pub fn render_catalog_panel(
     // 4. Quick Actions / Controls Footer
     let is_sub = audio_mode.to_lowercase() == "sub";
     let mode_badge = if is_sub {
-        Span::styled("[SUB] ", Style::default().fg(Theme::ACCENT_PINK).add_modifier(Modifier::BOLD))
+        Span::styled(
+            "[SUB] ",
+            Style::default()
+                .fg(Theme::ACCENT_PINK)
+                .add_modifier(Modifier::BOLD),
+        )
     } else {
-        Span::styled("[DUB] ", Style::default().fg(Theme::ACCENT_CYAN).add_modifier(Modifier::BOLD))
+        Span::styled(
+            "[DUB] ",
+            Style::default()
+                .fg(Theme::ACCENT_CYAN)
+                .add_modifier(Modifier::BOLD),
+        )
     };
 
     let server_badge = match preferred_provider.to_lowercase().as_str() {
@@ -141,20 +173,26 @@ pub fn render_catalog_panel(
     };
 
     let auto_play_str = if auto_play_enabled {
-        Span::styled("[AutoNext: ON] ", Style::default().fg(Theme::ACCENT_GREEN).add_modifier(Modifier::BOLD))
+        Span::styled(
+            "[AutoNext: ON] ",
+            Style::default()
+                .fg(Theme::ACCENT_GREEN)
+                .add_modifier(Modifier::BOLD),
+        )
     } else {
         Span::styled("[AutoNext: OFF] ", Style::default().fg(Theme::TEXT_MUTED))
     };
 
-    let footer_lines = vec![
-        Line::from(vec![
-            mode_badge,
-            server_badge,
-            auto_play_str,
-            Span::styled("[s] Server  [d] Sub/Dub  [S] Settings  [f] Fav  ", Style::default().fg(Theme::TEXT_MUTED)),
-            Span::styled(status_text, Style::default().fg(Theme::TEXT_BODY)),
-        ]),
-    ];
+    let footer_lines = vec![Line::from(vec![
+        mode_badge,
+        server_badge,
+        auto_play_str,
+        Span::styled(
+            "[?] Help  [t] Subs  [s] Server  [d] Sub/Dub  [S] Settings  [f] Fav  ",
+            Style::default().fg(Theme::TEXT_MUTED),
+        ),
+        Span::styled(status_text, Style::default().fg(Theme::TEXT_BODY)),
+    ])];
     let footer_block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Theme::BORDER_MUTED))

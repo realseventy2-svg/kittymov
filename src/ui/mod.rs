@@ -1,6 +1,7 @@
 pub mod banner;
 pub mod catalog_list;
 pub mod episode_modal;
+pub mod help_modal;
 pub mod metadata_panel;
 pub mod poster;
 pub mod provider_modal;
@@ -39,10 +40,7 @@ pub fn render_ui(f: &mut Frame, app: &App) {
     // Split into Left metadata column (38%) and Right catalog column (62%)
     let columns = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(38),
-            Constraint::Percentage(62),
-        ])
+        .constraints([Constraint::Percentage(38), Constraint::Percentage(62)])
         .split(inner_area);
 
     let selected_item = app.current_items.get(app.selected_index);
@@ -130,13 +128,11 @@ pub fn render_ui(f: &mut Frame, app: &App) {
     if let Some(ref s_modal) = app.settings_modal {
         let poster_cache_size = crate::config::get_poster_cache_size();
         let history_count = app.db.get_history_count();
-        render_settings_modal(
-            f,
-            size,
-            &app.cfg,
-            s_modal,
-            poster_cache_size,
-            history_count,
-        );
+        render_settings_modal(f, size, &app.cfg, s_modal, poster_cache_size, history_count);
+    }
+
+    // If Help modal is active, overlay it
+    if app.show_help {
+        help_modal::render_help_modal(f, size);
     }
 }

@@ -1,9 +1,9 @@
+use reqwest::Client;
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use reqwest::Client;
-use serde::Deserialize;
 
 use crate::config::get_cache_dir;
 use crate::metadata::TmdbClient;
@@ -13,11 +13,11 @@ const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SubtitleTrack {
     pub id: String,
-    pub lang: String,          // Normalized 3-letter code: "eng", "spa", "fra", "jpn", etc.
-    pub lang_name: String,     // Friendly name: "English", "Spanish", "French", etc.
-    pub url: String,           // Direct download URL
-    pub provider: String,      // "OpenSubtitles.org", "LookMovie"
-    pub format: String,        // "srt" or "vtt"
+    pub lang: String, // Normalized 3-letter code: "eng", "spa", "fra", "jpn", etc.
+    pub lang_name: String, // Friendly name: "English", "Spanish", "French", etc.
+    pub url: String,  // Direct download URL
+    pub provider: String, // "OpenSubtitles.org", "LookMovie"
+    pub format: String, // "srt" or "vtt"
     pub release_name: Option<String>,
 }
 
@@ -92,9 +92,15 @@ impl OpenSubtitlesProvider {
         let url = if media_type == "tv" {
             let s = season.unwrap_or(1);
             let ep = episode.unwrap_or(1);
-            format!("https://opensubtitles-v3.strem.io/subtitles/series/{}:{}:{}.json", id_clean, s, ep)
+            format!(
+                "https://opensubtitles-v3.strem.io/subtitles/series/{}:{}:{}.json",
+                id_clean, s, ep
+            )
         } else {
-            format!("https://opensubtitles-v3.strem.io/subtitles/movie/{}.json", id_clean)
+            format!(
+                "https://opensubtitles-v3.strem.io/subtitles/movie/{}.json",
+                id_clean
+            )
         };
 
         #[derive(Deserialize)]
@@ -113,16 +119,21 @@ impl OpenSubtitlesProvider {
             subtitles: Option<Vec<RawStremioSub>>,
         }
 
-        let resp = self.client.get(&url)
+        let resp = self
+            .client
+            .get(&url)
             .header("User-Agent", USER_AGENT)
-            .send().await
+            .send()
+            .await
             .map_err(|e| format!("OpenSubtitles request failed: {}", e))?;
 
         if !resp.status().is_success() {
             return Err(format!("OpenSubtitles HTTP status: {}", resp.status()));
         }
 
-        let data: RawStremioResp = resp.json().await
+        let data: RawStremioResp = resp
+            .json()
+            .await
             .map_err(|e| format!("Failed to parse OpenSubtitles JSON: {}", e))?;
 
         let mut tracks = Vec::new();
@@ -134,13 +145,21 @@ impl OpenSubtitlesProvider {
                 let raw_lang = sub.lang.as_deref().unwrap_or("eng");
                 let (norm_lang, lang_name) = normalize_language(raw_lang);
 
-                let format = if sub.url.ends_with(".vtt") || sub.subtitle_file_name.as_deref().unwrap_or("").ends_with(".vtt") {
+                let format = if sub.url.ends_with(".vtt")
+                    || sub
+                        .subtitle_file_name
+                        .as_deref()
+                        .unwrap_or("")
+                        .ends_with(".vtt")
+                {
                     "vtt".to_string()
                 } else {
                     "srt".to_string()
                 };
 
-                let track_id = sub.id.unwrap_or_else(|| format!("{}_{}", norm_lang, tracks.len()));
+                let track_id = sub
+                    .id
+                    .unwrap_or_else(|| format!("{}_{}", norm_lang, tracks.len()));
 
                 tracks.push(SubtitleTrack {
                     id: track_id,
@@ -187,7 +206,11 @@ impl SubtitleManager {
         let mut tracks = Vec::new();
 
         if let Some(id) = imdb_id {
-            if let Ok(ost_tracks) = self.opensubtitles.fetch_tracks(id, media_type, season, episode).await {
+            if let Ok(ost_tracks) = self
+                .opensubtitles
+                .fetch_tracks(id, media_type, season, episode)
+                .await
+            {
                 tracks.extend(ost_tracks);
             }
         }
@@ -228,7 +251,9 @@ impl SubtitleManager {
                 "rus" => 7,
                 _ => 10,
             };
-            rank(&a.lang_code).cmp(&rank(&b.lang_code)).then(a.lang_name.cmp(&b.lang_name))
+            rank(&a.lang_code)
+                .cmp(&rank(&b.lang_code))
+                .then(a.lang_name.cmp(&b.lang_name))
         });
 
         groups
@@ -244,27 +269,42 @@ impl SubtitleManager {
         std::fs::create_dir_all(&cache_dir).ok();
 
         // Sanitize file prefix
-        let clean_prefix: String = file_prefix.chars()
-            .map(|c| if c.is_alphanumeric() || c == '.' || c == '_' || c == '-' { c } else { '_' })
+        let clean_prefix: String = file_prefix
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || c == '.' || c == '_' || c == '-' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect();
 
-        let filename = format!("{}.{}.{}.{}", clean_prefix, track.lang, track.lang_name, track.format);
+        let filename = format!(
+            "{}.{}.{}.{}",
+            clean_prefix, track.lang, track.lang_name, track.format
+        );
         let dest = cache_dir.join(&filename);
 
         if dest.exists() && dest.metadata().map(|m| m.len() > 10).unwrap_or(false) {
             return Ok(dest);
         }
 
-        let resp = self.client.get(&track.url)
+        let resp = self
+            .client
+            .get(&track.url)
             .header("User-Agent", USER_AGENT)
-            .send().await
+            .send()
+            .await
             .map_err(|e| format!("Subtitle download failed: {}", e))?;
 
         if !resp.status().is_success() {
             return Err(format!("Subtitle download HTTP status {}", resp.status()));
         }
 
-        let bytes = resp.bytes().await
+        let bytes = resp
+            .bytes()
+            .await
             .map_err(|e| format!("Failed to read subtitle stream: {}", e))?;
 
         if bytes.is_empty() {
@@ -291,7 +331,9 @@ impl SubtitleManager {
         preferred_lang: &str,
     ) -> Vec<String> {
         let imdb_id = tmdb.get_imdb_id(tmdb_id, media_type).await.ok();
-        let all_tracks = self.fetch_all_subtitles(imdb_id.as_deref(), media_type, season, episode).await;
+        let all_tracks = self
+            .fetch_all_subtitles(imdb_id.as_deref(), media_type, season, episode)
+            .await;
 
         if all_tracks.is_empty() {
             return Vec::new();
@@ -323,7 +365,9 @@ impl SubtitleManager {
         }
 
         // 2. Add other languages up to 6 total tracks
-        let priority_langs = ["eng", "spa", "fra", "deu", "jpn", "por", "ita", "rus", "kor", "zho"];
+        let priority_langs = [
+            "eng", "spa", "fra", "deu", "jpn", "por", "ita", "rus", "kor", "zho",
+        ];
         for lang in &priority_langs {
             if selected_tracks.len() >= 6 {
                 break;
@@ -371,12 +415,30 @@ mod tests {
 
     #[test]
     fn test_normalize_language() {
-        assert_eq!(normalize_language("en"), ("eng".to_string(), "English".to_string()));
-        assert_eq!(normalize_language("eng"), ("eng".to_string(), "English".to_string()));
-        assert_eq!(normalize_language("spa"), ("spa".to_string(), "Spanish".to_string()));
-        assert_eq!(normalize_language("fre"), ("fra".to_string(), "French".to_string()));
-        assert_eq!(normalize_language("jpn"), ("jpn".to_string(), "Japanese".to_string()));
-        assert_eq!(normalize_language("ger"), ("deu".to_string(), "German".to_string()));
+        assert_eq!(
+            normalize_language("en"),
+            ("eng".to_string(), "English".to_string())
+        );
+        assert_eq!(
+            normalize_language("eng"),
+            ("eng".to_string(), "English".to_string())
+        );
+        assert_eq!(
+            normalize_language("spa"),
+            ("spa".to_string(), "Spanish".to_string())
+        );
+        assert_eq!(
+            normalize_language("fre"),
+            ("fra".to_string(), "French".to_string())
+        );
+        assert_eq!(
+            normalize_language("jpn"),
+            ("jpn".to_string(), "Japanese".to_string())
+        );
+        assert_eq!(
+            normalize_language("ger"),
+            ("deu".to_string(), "German".to_string())
+        );
     }
 
     #[test]
@@ -422,16 +484,34 @@ mod tests {
     #[tokio::test]
     async fn test_opensubtitles_fetch_live_movie() {
         let provider = OpenSubtitlesProvider::new();
-        let tracks = provider.fetch_tracks("tt0111161", "movie", None, None).await.expect("Failed to fetch movie subs");
-        assert!(!tracks.is_empty(), "OpenSubtitles should return tracks for Shawshank Redemption");
-        assert!(tracks.iter().any(|t| t.lang == "eng"), "Should contain English subtitle track");
+        let tracks = provider
+            .fetch_tracks("tt0111161", "movie", None, None)
+            .await
+            .expect("Failed to fetch movie subs");
+        assert!(
+            !tracks.is_empty(),
+            "OpenSubtitles should return tracks for Shawshank Redemption"
+        );
+        assert!(
+            tracks.iter().any(|t| t.lang == "eng"),
+            "Should contain English subtitle track"
+        );
     }
 
     #[tokio::test]
     async fn test_opensubtitles_fetch_live_series() {
         let provider = OpenSubtitlesProvider::new();
-        let tracks = provider.fetch_tracks("tt3061046", "tv", Some(1), Some(1)).await.expect("Failed to fetch SU subs");
-        assert!(!tracks.is_empty(), "OpenSubtitles should return tracks for Steven Universe S01E01");
-        assert!(tracks.iter().any(|t| t.lang == "eng"), "Should contain English subtitle track for SU S01E01");
+        let tracks = provider
+            .fetch_tracks("tt3061046", "tv", Some(1), Some(1))
+            .await
+            .expect("Failed to fetch SU subs");
+        assert!(
+            !tracks.is_empty(),
+            "OpenSubtitles should return tracks for Steven Universe S01E01"
+        );
+        assert!(
+            tracks.iter().any(|t| t.lang == "eng"),
+            "Should contain English subtitle track for SU S01E01"
+        );
     }
 }

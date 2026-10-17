@@ -1,5 +1,6 @@
 mod app;
 mod config;
+mod diagnostics;
 mod metadata;
 mod player;
 mod providers;
@@ -7,22 +8,28 @@ mod storage;
 mod subtitles;
 mod ui;
 
-use std::io::stdout;
-use std::time::Duration;
 use clap::Parser;
 use crossterm::event::{Event, KeyCode, KeyEventKind};
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
+use crossterm::terminal::{
+    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+};
 use futures_util::StreamExt;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
+use std::io::stdout;
+use std::time::Duration;
 use tracing_subscriber::EnvFilter;
 
 use crate::app::{ActiveTab, App};
-use crate::config::load_config;
+use crate::config::{get_state_dir, load_config};
 use crate::storage::Database;
 
 #[derive(Parser, Debug)]
-#[command(name = "kittymov", version = "2.0.0", about = "Modern Cyber-Minimalist Terminal Movie & TV Streaming Suite")]
+#[command(
+    name = "kittymov",
+    version = "2.0.0",
+    about = "Modern Cyber-Minimalist Terminal Movie & TV Streaming Suite"
+)]
 struct Cli {
     #[arg(help = "Optional movie or series query to search immediately")]
     query: Option<String>,
@@ -32,23 +39,38 @@ struct Cli {
 
     #[arg(short, long, help = "Instantly resume the most recently watched title")]
     resume: bool,
+
+    #[arg(long, help = "Run environment diagnostics and dependency health check")]
+    doctor: bool,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Setup logging to ~/.local/state/kittymov/kittymov.log
-    let log_dir = dirs_fallback().join("kittymov");
+    let log_dir = get_state_dir();
     std::fs::create_dir_all(&log_dir).ok();
     let log_file = log_dir.join("kittymov.log");
-    if let Ok(file) = std::fs::OpenOptions::new().create(true).append(true).open(&log_file) {
+    if let Ok(file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_file)
+    {
         let _ = tracing_subscriber::fmt()
-            .with_env_filter(EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()))
+            .with_env_filter(
+                EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()),
+            )
             .with_writer(file)
             .try_init();
     }
 
     let cli = Cli::parse();
     let cfg = load_config();
+
+    // Fast-path: --doctor flag
+    if cli.doctor {
+        return crate::diagnostics::run_doctor(&cfg).await;
+    }
+
     let db = Database::new()?;
 
     // Fast-path: --resume flag
@@ -64,7 +86,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     &latest.poster_path,
                     latest.season.unwrap_or(1),
                     latest.episode.unwrap_or(1),
-                ).await;
+                )
+                .await;
             } else {
                 app.play_movie(crate::metadata::MediaItem {
                     tmdb_id: latest.tmdb_id,
@@ -78,7 +101,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     duration_str: String::new(),
                     status: String::new(),
                     episodes_count: None,
-                }).await;
+                })
+                .await;
             }
             return Ok(());
         } else {
@@ -126,6 +150,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
+            _ = tokio::signal::ctrl_c() => {
+                app.should_quit = true;
+            }
         }
     }
 
@@ -137,14 +164,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::event::KeyModifiers) {
+async fn handle_key_event(
+    app: &mut App,
+    code: KeyCode,
+    _modifiers: crossterm::event::KeyModifiers,
+) {
+    // 0. If Help modal is active
+    if app.show_help {
+        match code {
+            KeyCode::Esc
+            | KeyCode::Char('?')
+            | KeyCode::Char('q')
+            | KeyCode::Enter
+            | KeyCode::F(1) => {
+                app.show_help = false;
+            }
+            _ => {}
+        }
+        return;
+    }
+
     // 1. If Settings Modal is open
     if let Some(ref s) = app.settings_modal.clone() {
         // A. If confirmation dialog is active
         if s.confirmation.is_some() {
             match code {
                 KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
-                    app.settings_execute_confirmation();
+                    app.settings_execute_confirmation().await;
                 }
                 KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
                     app.settings_cancel_confirmation();
@@ -224,6 +270,9 @@ async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::e
                     sm.feedback_message = Some("Keys: Tab switch pane, ↑/↓ navigate, ←/→/Space change, r reset, / search, Esc close".to_string());
                 }
             }
+            KeyCode::F(1) => {
+                app.toggle_help();
+            }
             KeyCode::Home => {
                 if let Some(ref mut sm) = app.settings_modal {
                     sm.item_idx = 0;
@@ -233,7 +282,8 @@ async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::e
                 if let Some(ref mut sm) = app.settings_modal {
                     match sm.active_pane {
                         crate::app::SettingsPane::Categories => {
-                            sm.category_idx = crate::app::SettingsCategory::ALL.len().saturating_sub(1);
+                            sm.category_idx =
+                                crate::app::SettingsCategory::ALL.len().saturating_sub(1);
                         }
                         crate::app::SettingsPane::Content => {
                             let cat = sm.current_category();
@@ -278,6 +328,9 @@ async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::e
             KeyCode::Esc => {
                 app.subtitle_modal = None;
             }
+            KeyCode::Char('?') | KeyCode::F(1) => {
+                app.toggle_help();
+            }
             KeyCode::Up | KeyCode::Char('k') => {
                 app.subtitle_modal_prev();
             }
@@ -300,6 +353,9 @@ async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::e
         match code {
             KeyCode::Esc => {
                 app.provider_modal = None;
+            }
+            KeyCode::Char('?') | KeyCode::F(1) => {
+                app.toggle_help();
             }
             KeyCode::Char('t') => {
                 app.open_subtitle_modal().await;
@@ -357,11 +413,14 @@ async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::e
         return;
     }
 
-    // 4. If Episode Modal is open
+    // 5. If Episode Modal is open
     if let Some(ref mut modal) = app.episode_modal {
         match code {
             KeyCode::Esc => {
                 app.episode_modal = None;
+            }
+            KeyCode::Char('?') | KeyCode::F(1) => {
+                app.toggle_help();
             }
             KeyCode::Char('s') => {
                 app.open_provider_modal_for_selected();
@@ -381,7 +440,9 @@ async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::e
                 }
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                if !modal.episodes.is_empty() && modal.selected_episode_idx + 1 < modal.episodes.len() {
+                if !modal.episodes.is_empty()
+                    && modal.selected_episode_idx + 1 < modal.episodes.len()
+                {
                     modal.selected_episode_idx += 1;
                 }
             }
@@ -395,13 +456,18 @@ async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::e
                         if let Some(ref map) = modal.all_season_episodes {
                             modal.episodes = map.get(&s_num).cloned().unwrap_or_default();
                         } else {
-                            modal.episodes = app.tmdb.get_season_episodes(tmdb_id, s_num).await.unwrap_or_default();
+                            modal.episodes = app
+                                .tmdb
+                                .get_season_episodes(tmdb_id, s_num)
+                                .await
+                                .unwrap_or_default();
                         }
                     }
                 }
             }
             KeyCode::Right | KeyCode::Char('l') | KeyCode::Char(']') => {
-                if !modal.seasons.is_empty() && modal.selected_season_idx + 1 < modal.seasons.len() {
+                if !modal.seasons.is_empty() && modal.selected_season_idx + 1 < modal.seasons.len()
+                {
                     modal.selected_season_idx += 1;
                     modal.selected_episode_idx = 0;
                     if let Some(s) = modal.seasons.get(modal.selected_season_idx) {
@@ -410,7 +476,11 @@ async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::e
                         if let Some(ref map) = modal.all_season_episodes {
                             modal.episodes = map.get(&s_num).cloned().unwrap_or_default();
                         } else {
-                            modal.episodes = app.tmdb.get_season_episodes(tmdb_id, s_num).await.unwrap_or_default();
+                            modal.episodes = app
+                                .tmdb
+                                .get_season_episodes(tmdb_id, s_num)
+                                .await
+                                .unwrap_or_default();
                         }
                     }
                 }
@@ -421,17 +491,23 @@ async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::e
             KeyCode::Char('a') => {
                 app.cfg.auto_play_next = !app.cfg.auto_play_next;
                 let _ = app.cfg.save();
-                app.status_message = format!("Auto-Play Next: {}", if app.cfg.auto_play_next { "ON" } else { "OFF" });
+                app.status_message = format!(
+                    "Auto-Play Next: {}",
+                    if app.cfg.auto_play_next { "ON" } else { "OFF" }
+                );
             }
             _ => {}
         }
         return;
     }
 
-    // 5. Main view navigation
+    // 6. Main view navigation
     match code {
         KeyCode::Char('q') => {
             app.should_quit = true;
+        }
+        KeyCode::Char('?') | KeyCode::F(1) => {
+            app.toggle_help();
         }
         KeyCode::Char('/') => {
             app.is_searching = true;
@@ -476,14 +552,11 @@ async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::e
         KeyCode::Char('a') => {
             app.cfg.auto_play_next = !app.cfg.auto_play_next;
             let _ = app.cfg.save();
-            app.status_message = format!("Auto-Play Next: {}", if app.cfg.auto_play_next { "ON" } else { "OFF" });
+            app.status_message = format!(
+                "Auto-Play Next: {}",
+                if app.cfg.auto_play_next { "ON" } else { "OFF" }
+            );
         }
         _ => {}
     }
-}
-
-fn dirs_fallback() -> std::path::PathBuf {
-    std::env::var_os("HOME")
-        .map(|h| std::path::PathBuf::from(h).join(".local/state"))
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
 }

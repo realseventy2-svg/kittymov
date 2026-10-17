@@ -55,8 +55,7 @@ impl Config {
         let dir = get_config_dir();
         let cfg_path = dir.join("config.json");
         let tmp_path = dir.join("config.json.tmp");
-        let data = serde_json::to_string_pretty(self)
-            .map_err(std::io::Error::other)?;
+        let data = serde_json::to_string_pretty(self).map_err(std::io::Error::other)?;
         std::fs::write(&tmp_path, data)?;
         std::fs::rename(&tmp_path, &cfg_path)
     }
@@ -94,7 +93,8 @@ impl Default for Config {
 pub fn get_poster_cache_size() -> u64 {
     let dir = get_cache_dir().join("posters");
     if let Ok(entries) = std::fs::read_dir(&dir) {
-        entries.filter_map(|e| e.ok())
+        entries
+            .filter_map(|e| e.ok())
             .filter_map(|e| e.metadata().ok())
             .map(|m| m.len())
             .sum()
@@ -118,16 +118,50 @@ pub fn clear_poster_cache() -> Result<usize, std::io::Error> {
     Ok(count)
 }
 
+pub fn xdg_config_home() -> PathBuf {
+    if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME") {
+        if !xdg.is_empty() {
+            return PathBuf::from(xdg);
+        }
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        return PathBuf::from(home).join(".config");
+    }
+    PathBuf::from(".")
+}
+
+pub fn xdg_cache_home() -> PathBuf {
+    if let Some(xdg) = std::env::var_os("XDG_CACHE_HOME") {
+        if !xdg.is_empty() {
+            return PathBuf::from(xdg);
+        }
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        return PathBuf::from(home).join(".cache");
+    }
+    std::env::temp_dir()
+}
+
+pub fn xdg_state_home() -> PathBuf {
+    if let Some(xdg) = std::env::var_os("XDG_STATE_HOME") {
+        if !xdg.is_empty() {
+            return PathBuf::from(xdg);
+        }
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        return PathBuf::from(home).join(".local/state");
+    }
+    std::env::temp_dir()
+}
+
 pub fn get_config_dir() -> PathBuf {
-    let mut dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("~/.config"));
-    dir.push("kittymov");
+    let dir = xdg_config_home().join("kittymov");
     std::fs::create_dir_all(&dir).ok();
     dir
 }
 
 pub fn get_cache_dir() -> PathBuf {
-    let mut dir = dirs::cache_dir().unwrap_or_else(|| PathBuf::from("~/.cache"));
-    dir.push("kittymov");
+    let dir = xdg_cache_home().join("kittymov");
     let posters = dir.join("posters");
     std::fs::create_dir_all(&posters).ok();
     let subtitles = dir.join("subtitles");
@@ -135,31 +169,53 @@ pub fn get_cache_dir() -> PathBuf {
     dir
 }
 
+pub fn get_state_dir() -> PathBuf {
+    let dir = xdg_state_home().join("kittymov");
+    std::fs::create_dir_all(&dir).ok();
+    dir
+}
+
 pub fn load_config() -> Config {
     let cfg_path = get_config_dir().join("config.json");
     if cfg_path.exists() {
-        if let Ok(data) = std::fs::read_to_string(&cfg_path) {
-            if let Ok(cfg) = serde_json::from_str(&data) {
-                return cfg;
+        match std::fs::read_to_string(&cfg_path) {
+            Ok(data) => match serde_json::from_str::<Config>(&data) {
+                Ok(mut cfg) => {
+                    if let Ok(key) = std::env::var("TMDB_API_KEY") {
+                        if !key.trim().is_empty() {
+                            cfg.tmdb_api_key = key;
+                        }
+                    }
+                    return cfg;
+                }
+                Err(err) => {
+                    let timestamp = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+                    let backup_path =
+                        get_config_dir().join(format!("config.json.corrupted.{}.bak", timestamp));
+                    let _ = std::fs::write(&backup_path, &data);
+                    eprintln!(
+                        "Warning: Malformed configuration file ({:?}).\nBacked up to: {:?}\nError: {}\nRestoring safe defaults.",
+                        cfg_path, backup_path, err
+                    );
+                }
+            },
+            Err(e) => {
+                eprintln!("Warning: Failed to read config file {:?}: {}", cfg_path, e);
             }
         }
     }
+
     let default_cfg = Config::default();
+    let tmp_path = get_config_dir().join("config.json.tmp");
     if let Ok(data) = serde_json::to_string_pretty(&default_cfg) {
-        std::fs::write(&cfg_path, data).ok();
+        if std::fs::write(&tmp_path, data).is_ok() {
+            let _ = std::fs::rename(&tmp_path, &cfg_path);
+        }
     }
     default_cfg
-}
-
-// Minimal dirs helper fallback if dirs crate is not present
-mod dirs {
-    use std::path::PathBuf;
-    pub fn config_dir() -> Option<PathBuf> {
-        std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config"))
-    }
-    pub fn cache_dir() -> Option<PathBuf> {
-        std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache"))
-    }
 }
 
 #[cfg(test)]
@@ -185,24 +241,25 @@ mod tests {
         assert_eq!(cfg.sub_language, "spa");
         assert!(!cfg.auto_play_next);
         assert_eq!(cfg.default_tab, "movies");
-        assert_eq!(cfg.resume_on_startup, false);
-        assert_eq!(cfg.subtitle_augmentation, true);
+        assert!(!cfg.resume_on_startup);
+        assert!(cfg.subtitle_augmentation);
         assert_eq!(cfg.theme_name, "cyber");
         assert_eq!(cfg.poster_render_mode, "half-block");
     }
 
     #[test]
     fn test_config_reset_to_defaults() {
-        let mut cfg = Config::default();
-        cfg.default_tab = "history".to_string();
-        cfg.resume_on_startup = true;
-        cfg.theme_name = "amber".to_string();
+        let mut cfg = Config {
+            default_tab: "history".to_string(),
+            resume_on_startup: true,
+            theme_name: "amber".to_string(),
+            ..Config::default()
+        };
 
         cfg.reset_to_defaults();
 
         assert_eq!(cfg.default_tab, "movies");
-        assert_eq!(cfg.resume_on_startup, false);
+        assert!(!cfg.resume_on_startup);
         assert_eq!(cfg.theme_name, "cyber");
     }
 }
-

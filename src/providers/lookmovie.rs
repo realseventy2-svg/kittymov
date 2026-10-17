@@ -123,22 +123,34 @@ impl Provider for LookMovieProvider {
 
         // Step 1: Search for title
         let search_endpoint = if is_movie { "movies" } else { "shows" };
-        let encoded_query = url::form_urlencoded::byte_serialize(req.title.as_bytes()).collect::<String>();
-        let search_url = format!("{}/api/v1/{}/do-search/?q={}", base_url, search_endpoint, encoded_query);
+        let encoded_query =
+            url::form_urlencoded::byte_serialize(req.title.as_bytes()).collect::<String>();
+        let search_url = format!(
+            "{}/api/v1/{}/do-search/?q={}",
+            base_url, search_endpoint, encoded_query
+        );
 
-        let search_resp: SearchResponse = self.client.get(&search_url)
+        let search_resp: SearchResponse = self
+            .client
+            .get(&search_url)
             .header("User-Agent", USER_AGENT)
             .header("Accept", "application/json")
-            .send().await
+            .send()
+            .await
             .map_err(|e| format!("LookMovie search request failed: {}", e))?
-            .json().await
+            .json()
+            .await
             .map_err(|e| format!("Invalid search JSON from LookMovie: {}", e))?;
 
         if search_resp.result.is_empty() {
-            return Err(format!("LookMovie: No search results found for '{}'", req.title));
+            return Err(format!(
+                "LookMovie: No search results found for '{}'",
+                req.title
+            ));
         }
 
-        let slug = self.select_best_slug(&search_resp.result, &req.title, req.year.as_deref())
+        let slug = self
+            .select_best_slug(&search_resp.result, &req.title, req.year.as_deref())
             .ok_or_else(|| format!("LookMovie: No matching slug for '{}'", req.title))?;
 
         // Step 2: Fetch view page to extract play link
@@ -149,16 +161,25 @@ impl Provider for LookMovieProvider {
         };
         let view_url = format!("{}/{}", base_url, view_path);
 
-        let view_html = self.client.get(&view_url)
+        let view_html = self
+            .client
+            .get(&view_url)
             .header("User-Agent", USER_AGENT)
             .header("Referer", base_url)
-            .send().await
+            .send()
+            .await
             .map_err(|e| format!("Failed to fetch LookMovie view page: {}", e))?
-            .text().await
+            .text()
+            .await
             .map_err(|e| format!("Failed to read LookMovie view page: {}", e))?;
 
-        let play_re = if is_movie { &self.movie_play_re } else { &self.show_play_re };
-        let play_path = play_re.captures(&view_html)
+        let play_re = if is_movie {
+            &self.movie_play_re
+        } else {
+            &self.show_play_re
+        };
+        let play_path = play_re
+            .captures(&view_html)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().to_string())
             .ok_or_else(|| "Could not find play link in LookMovie view page".to_string())?;
@@ -166,20 +187,28 @@ impl Provider for LookMovieProvider {
         let play_url = format!("{}{}", base_url, play_path);
 
         // Step 3: Fetch play page to extract storage credentials
-        let play_html = self.client.get(&play_url)
+        let play_html = self
+            .client
+            .get(&play_url)
             .header("User-Agent", USER_AGENT)
             .header("Referer", &view_url)
-            .send().await
+            .send()
+            .await
             .map_err(|e| format!("Failed to fetch LookMovie play page: {}", e))?
-            .text().await
+            .text()
+            .await
             .map_err(|e| format!("Failed to read LookMovie play page: {}", e))?;
 
-        let hash = self.hash_re.captures(&play_html)
+        let hash = self
+            .hash_re
+            .captures(&play_html)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().to_string())
             .ok_or_else(|| "Could not find hash in LookMovie play page".to_string())?;
 
-        let expires_str = self.expires_re.captures(&play_html)
+        let expires_str = self
+            .expires_re
+            .captures(&play_html)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str())
             .ok_or_else(|| "Could not find expires in LookMovie play page".to_string())?;
@@ -187,7 +216,9 @@ impl Provider for LookMovieProvider {
 
         // Step 4: Call security access endpoint
         let access_url = if is_movie {
-            let id_movie = self.movie_id_re.captures(&play_html)
+            let id_movie = self
+                .movie_id_re
+                .captures(&play_html)
                 .and_then(|c| c.get(1))
                 .map(|m| m.as_str())
                 .ok_or_else(|| "Could not find id_movie in LookMovie play page".to_string())?;
@@ -197,8 +228,9 @@ impl Provider for LookMovieProvider {
                 base_url, id_movie, hash, expires_str
             )
         } else {
-            let unescaped = extract_window_seasons(&play_html)
-                .ok_or_else(|| "Could not find window.seasons in LookMovie show play page".to_string())?;
+            let unescaped = extract_window_seasons(&play_html).ok_or_else(|| {
+                "Could not find window.seasons in LookMovie show play page".to_string()
+            })?;
 
             let seasons_json: serde_json::Value = serde_json::from_str(&unescaped)
                 .map_err(|e| format!("Failed to parse window.seasons JSON: {}", e))?;
@@ -206,8 +238,13 @@ impl Provider for LookMovieProvider {
             let season_str = req.season.unwrap_or(1).to_string();
             let episode_str = req.episode.unwrap_or(1).to_string();
 
-            let id_episode = find_episode_id(&seasons_json, &season_str, &episode_str)
-                .ok_or_else(|| format!("LookMovie: Season {} Episode {} not found", season_str, episode_str))?;
+            let id_episode =
+                find_episode_id(&seasons_json, &season_str, &episode_str).ok_or_else(|| {
+                    format!(
+                        "LookMovie: Season {} Episode {} not found",
+                        season_str, episode_str
+                    )
+                })?;
 
             format!(
                 "{}/api/v1/security/episode-access?id_episode={}&hash={}&expires={}",
@@ -215,20 +252,25 @@ impl Provider for LookMovieProvider {
             )
         };
 
-        let access_resp: AccessResponse = self.client.get(&access_url)
+        let access_resp: AccessResponse = self
+            .client
+            .get(&access_url)
             .header("User-Agent", USER_AGENT)
             .header("Referer", &play_url)
             .header("Accept", "application/json")
-            .send().await
+            .send()
+            .await
             .map_err(|e| format!("LookMovie access request failed: {}", e))?
-            .json().await
+            .json()
+            .await
             .map_err(|e| format!("Invalid access JSON from LookMovie: {}", e))?;
 
         if !access_resp.success {
             return Err("LookMovie security access returned success: false".to_string());
         }
 
-        let streams = access_resp.streams
+        let streams = access_resp
+            .streams
             .ok_or_else(|| "No streams returned by LookMovie access endpoint".to_string())?;
 
         // Pick highest quality available
@@ -243,8 +285,9 @@ impl Provider for LookMovieProvider {
             }
         }
 
-        let stream_url = chosen_stream
-            .ok_or_else(|| "LookMovie: No playable stream URL found in access response".to_string())?;
+        let stream_url = chosen_stream.ok_or_else(|| {
+            "LookMovie: No playable stream URL found in access response".to_string()
+        })?;
 
         // Extract subtitles (prioritizing English and popular languages)
         let mut subtitles = Vec::new();
@@ -290,7 +333,10 @@ impl Provider for LookMovieProvider {
 
         let mut headers = HashMap::new();
         headers.insert("User-Agent".to_string(), USER_AGENT.to_string());
-        headers.insert("Referer".to_string(), "https://www.lookmovie2.to/".to_string());
+        headers.insert(
+            "Referer".to_string(),
+            "https://www.lookmovie2.to/".to_string(),
+        );
 
         Ok(StreamCandidate {
             stream_url,
@@ -343,15 +389,12 @@ fn find_episode_id(val: &serde_json::Value, season_str: &str, episode_str: &str)
     // 1. If episodes is a JSON array
     if let Some(episodes_list) = eps_val.as_array() {
         for ep in episodes_list {
-            let ep_num_match = ep.get("episode_number")
+            let ep_num_match = ep
+                .get("episode_number")
                 .and_then(|v| {
-                    if let Some(s) = v.as_str() {
-                        Some(s == episode_str)
-                    } else if let Some(n) = v.as_i64() {
-                        Some(n.to_string() == episode_str)
-                    } else {
-                        None
-                    }
+                    v.as_str()
+                        .map(|s| s == episode_str)
+                        .or_else(|| v.as_i64().map(|n| n.to_string() == episode_str))
                 })
                 .unwrap_or(false);
 
@@ -379,15 +422,12 @@ fn find_episode_id(val: &serde_json::Value, season_str: &str, episode_str: &str)
 
         for (k, ep) in episodes_map {
             let key_match = k == episode_str;
-            let ep_num_match = ep.get("episode_number")
+            let ep_num_match = ep
+                .get("episode_number")
                 .and_then(|v| {
-                    if let Some(s) = v.as_str() {
-                        Some(s == episode_str)
-                    } else if let Some(n) = v.as_i64() {
-                        Some(n.to_string() == episode_str)
-                    } else {
-                        None
-                    }
+                    v.as_str()
+                        .map(|s| s == episode_str)
+                        .or_else(|| v.as_i64().map(|n| n.to_string() == episode_str))
                 })
                 .unwrap_or(false);
 

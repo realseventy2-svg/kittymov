@@ -5,7 +5,10 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use ratatui::Frame;
 
 use super::theme::Theme;
-use crate::app::{format_bytes, lang_name, search_settings_matches, SettingsCategory, SettingsConfirmation, SettingsModalState, SettingsPane};
+use crate::app::{
+    format_bytes, lang_name, search_settings_matches, SettingsCategory, SettingsConfirmation,
+    SettingsModalState, SettingsPane,
+};
 use crate::config::Config;
 
 pub fn render_settings_modal(
@@ -35,7 +38,9 @@ pub fn render_settings_modal(
         .style(Style::default().bg(Theme::BG))
         .title(Span::styled(
             " KittyMov • Settings & Preferences ",
-            Style::default().fg(Theme::ACCENT_GOLD).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Theme::ACCENT_GOLD)
+                .add_modifier(Modifier::BOLD),
         ));
 
     f.render_widget(main_block, popup_area);
@@ -59,29 +64,55 @@ pub fn render_settings_modal(
     let mut breadcrumbs = vec![
         Span::styled("Settings ", Style::default().fg(Theme::TEXT_MUTED)),
         Span::styled("› ", Style::default().fg(Theme::ACCENT_GOLD)),
-        Span::styled(format!("{} {} ", cur_cat.icon(), cur_cat.title()), Style::default().fg(Theme::TEXT_TITLE).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            format!("{} {} ", cur_cat.icon(), cur_cat.title()),
+            Style::default()
+                .fg(Theme::TEXT_TITLE)
+                .add_modifier(Modifier::BOLD),
+        ),
     ];
 
     if is_search_active {
         breadcrumbs.push(Span::styled("› ", Style::default().fg(Theme::ACCENT_GOLD)));
         breadcrumbs.push(Span::styled(
             format!("Filter: \"{}\" ", state.search_query),
-            Style::default().fg(Theme::ACCENT_CYAN).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Theme::ACCENT_CYAN)
+                .add_modifier(Modifier::BOLD),
         ));
     }
 
     let header_line = Line::from(breadcrumbs);
     let search_hint_line = if state.is_searching {
         Line::from(vec![
-            Span::styled(" / Search: ", Style::default().fg(Theme::ACCENT_CYAN).add_modifier(Modifier::BOLD)),
-            Span::styled(&state.search_query, Style::default().fg(Theme::TEXT_TITLE).bg(Theme::SELECTION_BG)),
+            Span::styled(
+                " / Search: ",
+                Style::default()
+                    .fg(Theme::ACCENT_CYAN)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                &state.search_query,
+                Style::default()
+                    .fg(Theme::TEXT_TITLE)
+                    .bg(Theme::SELECTION_BG),
+            ),
             Span::styled("█", Style::default().fg(Theme::ACCENT_PINK)),
-            Span::styled("  [Enter] Accept  [Esc] Clear", Style::default().fg(Theme::TEXT_MUTED)),
+            Span::styled(
+                "  [Enter] Accept  [Esc] Clear",
+                Style::default().fg(Theme::TEXT_MUTED),
+            ),
         ])
     } else {
         Line::from(vec![
-            Span::styled(cur_cat.description(), Style::default().fg(Theme::TEXT_MUTED)),
-            Span::styled("  (Press '/' to search)", Style::default().fg(Theme::BORDER_MUTED)),
+            Span::styled(
+                cur_cat.description(),
+                Style::default().fg(Theme::TEXT_MUTED),
+            ),
+            Span::styled(
+                "  (Press '/' to search)",
+                Style::default().fg(Theme::BORDER_MUTED),
+            ),
         ])
     };
 
@@ -113,7 +144,13 @@ pub fn render_settings_modal(
         .style(Style::default().bg(Theme::SURFACE))
         .title(Span::styled(
             " Categories ",
-            Style::default().fg(if sidebar_is_active { Theme::ACCENT_GOLD } else { Theme::TEXT_MUTED }).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(if sidebar_is_active {
+                    Theme::ACCENT_GOLD
+                } else {
+                    Theme::TEXT_MUTED
+                })
+                .add_modifier(Modifier::BOLD),
         ));
 
     let mut cat_lines = Vec::new();
@@ -123,22 +160,55 @@ pub fn render_settings_modal(
         if is_current {
             if sidebar_is_active {
                 cat_lines.push(Line::from(vec![
-                    Span::styled(" ◆ ", Style::default().fg(Theme::ACCENT_GOLD).add_modifier(Modifier::BOLD)),
-                    Span::styled(format!("{} ", cat.icon()), Style::default().fg(Theme::ACCENT_GOLD)),
-                    Span::styled(format!("{:<15}", cat.title()), Style::default().fg(Theme::TEXT_TITLE).bg(Theme::SELECTION_BG).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        " ◆ ",
+                        Style::default()
+                            .fg(Theme::ACCENT_GOLD)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        format!("{} ", cat.icon()),
+                        Style::default().fg(Theme::ACCENT_GOLD),
+                    ),
+                    Span::styled(
+                        format!("{:<15}", cat.title()),
+                        Style::default()
+                            .fg(Theme::TEXT_TITLE)
+                            .bg(Theme::SELECTION_BG)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                 ]));
             } else {
                 cat_lines.push(Line::from(vec![
-                    Span::styled(" ▸ ", Style::default().fg(Theme::ACCENT_CYAN).add_modifier(Modifier::BOLD)),
-                    Span::styled(format!("{} ", cat.icon()), Style::default().fg(Theme::ACCENT_CYAN)),
-                    Span::styled(format!("{:<15}", cat.title()), Style::default().fg(Theme::TEXT_TITLE).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        " ▸ ",
+                        Style::default()
+                            .fg(Theme::ACCENT_CYAN)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        format!("{} ", cat.icon()),
+                        Style::default().fg(Theme::ACCENT_CYAN),
+                    ),
+                    Span::styled(
+                        format!("{:<15}", cat.title()),
+                        Style::default()
+                            .fg(Theme::TEXT_TITLE)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                 ]));
             }
         } else {
             cat_lines.push(Line::from(vec![
                 Span::styled("   ", Style::default()),
-                Span::styled(format!("{} ", cat.icon()), Style::default().fg(Theme::TEXT_MUTED)),
-                Span::styled(format!("{:<15}", cat.title()), Style::default().fg(Theme::TEXT_BODY)),
+                Span::styled(
+                    format!("{} ", cat.icon()),
+                    Style::default().fg(Theme::TEXT_MUTED),
+                ),
+                Span::styled(
+                    format!("{:<15}", cat.title()),
+                    Style::default().fg(Theme::TEXT_BODY),
+                ),
             ]));
         }
         cat_lines.push(Line::from(""));
@@ -167,7 +237,13 @@ pub fn render_settings_modal(
         .style(Style::default().bg(Theme::SURFACE))
         .title(Span::styled(
             format!(" {} ", content_title),
-            Style::default().fg(if content_is_active { Theme::ACCENT_GOLD } else { Theme::TEXT_MUTED }).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(if content_is_active {
+                    Theme::ACCENT_GOLD
+                } else {
+                    Theme::TEXT_MUTED
+                })
+                .add_modifier(Modifier::BOLD),
         ));
 
     let content_inner = Layout::default()
@@ -183,14 +259,18 @@ pub fn render_settings_modal(
 
     // Items Rendering
     let mut item_lines = Vec::new();
-    let mut active_description = "Use arrow keys to highlight an option, then press Space or Enter to toggle/cycle values.";
+    let mut active_description =
+        "Use arrow keys to highlight an option, then press Space or Enter to toggle/cycle values.";
 
     if is_search_active {
         let matches = search_settings_matches(cfg, &state.search_query);
         if matches.is_empty() {
             item_lines.push(Line::from(""));
             item_lines.push(Line::from(vec![
-                Span::styled("   No settings found matching \"", Style::default().fg(Theme::TEXT_MUTED)),
+                Span::styled(
+                    "   No settings found matching \"",
+                    Style::default().fg(Theme::TEXT_MUTED),
+                ),
                 Span::styled(&state.search_query, Style::default().fg(Theme::ACCENT_PINK)),
                 Span::styled("\".", Style::default().fg(Theme::TEXT_MUTED)),
             ]));
@@ -202,17 +282,47 @@ pub fn render_settings_modal(
                 if is_sel {
                     active_description = m.description;
                     item_lines.push(Line::from(vec![
-                        Span::styled(" ◆ ", Style::default().fg(Theme::ACCENT_GOLD).add_modifier(Modifier::BOLD)),
-                        Span::styled(format!("[{}] ", m.category.title()), Style::default().fg(Theme::ACCENT_CYAN).bg(Theme::SELECTION_BG)),
-                        Span::styled(format!("{:<26} ", m.label), Style::default().fg(Theme::TEXT_TITLE).bg(Theme::SELECTION_BG).add_modifier(Modifier::BOLD)),
-                        Span::styled(format!(": {}", m.value_str), Style::default().fg(Theme::ACCENT_GOLD).bg(Theme::SELECTION_BG)),
+                        Span::styled(
+                            " ◆ ",
+                            Style::default()
+                                .fg(Theme::ACCENT_GOLD)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            format!("[{}] ", m.category.title()),
+                            Style::default()
+                                .fg(Theme::ACCENT_CYAN)
+                                .bg(Theme::SELECTION_BG),
+                        ),
+                        Span::styled(
+                            format!("{:<26} ", m.label),
+                            Style::default()
+                                .fg(Theme::TEXT_TITLE)
+                                .bg(Theme::SELECTION_BG)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            format!(": {}", m.value_str),
+                            Style::default()
+                                .fg(Theme::ACCENT_GOLD)
+                                .bg(Theme::SELECTION_BG),
+                        ),
                     ]));
                 } else {
                     item_lines.push(Line::from(vec![
                         Span::styled("   ", Style::default()),
-                        Span::styled(format!("[{}] ", m.category.title()), Style::default().fg(Theme::TEXT_MUTED)),
-                        Span::styled(format!("{:<26} ", m.label), Style::default().fg(Theme::TEXT_BODY)),
-                        Span::styled(format!(": {}", m.value_str), Style::default().fg(Theme::TEXT_MUTED)),
+                        Span::styled(
+                            format!("[{}] ", m.category.title()),
+                            Style::default().fg(Theme::TEXT_MUTED),
+                        ),
+                        Span::styled(
+                            format!("{:<26} ", m.label),
+                            Style::default().fg(Theme::TEXT_BODY),
+                        ),
+                        Span::styled(
+                            format!(": {}", m.value_str),
+                            Style::default().fg(Theme::TEXT_MUTED),
+                        ),
                     ]));
                 }
             }
@@ -227,15 +337,26 @@ pub fn render_settings_modal(
                 item_lines.push(Line::from(vec![
                     Span::styled(
                         if content_is_active { " ◆ " } else { "   " },
-                        Style::default().fg(Theme::ACCENT_GOLD).add_modifier(Modifier::BOLD),
+                        Style::default()
+                            .fg(Theme::ACCENT_GOLD)
+                            .add_modifier(Modifier::BOLD),
                     ),
-                    Span::styled(format!("{:<30}", label), Style::default().fg(Theme::TEXT_TITLE).bg(Theme::SELECTION_BG).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        format!("{:<30}", label),
+                        Style::default()
+                            .fg(Theme::TEXT_TITLE)
+                            .bg(Theme::SELECTION_BG)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                     val_widget.styled(true),
                 ]));
             } else {
                 item_lines.push(Line::from(vec![
                     Span::styled("   ", Style::default()),
-                    Span::styled(format!("{:<30}", label), Style::default().fg(Theme::TEXT_BODY)),
+                    Span::styled(
+                        format!("{:<30}", label),
+                        Style::default().fg(Theme::TEXT_BODY),
+                    ),
                     val_widget.styled(false),
                 ]));
             }
@@ -251,11 +372,17 @@ pub fn render_settings_modal(
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Theme::BORDER_MUTED))
         .style(Style::default().bg(Theme::SURFACE_ALT))
-        .title(Span::styled(" ℹ ABOUT THIS SETTING ", Style::default().fg(Theme::ACCENT_GOLD).add_modifier(Modifier::BOLD)));
+        .title(Span::styled(
+            " ℹ ABOUT THIS SETTING ",
+            Style::default()
+                .fg(Theme::ACCENT_GOLD)
+                .add_modifier(Modifier::BOLD),
+        ));
 
-    let desc_p = Paragraph::new(vec![
-        Line::from(Span::styled(active_description, Style::default().fg(Theme::TEXT_TITLE))),
-    ])
+    let desc_p = Paragraph::new(vec![Line::from(Span::styled(
+        active_description,
+        Style::default().fg(Theme::TEXT_TITLE),
+    ))])
     .block(desc_block);
     f.render_widget(desc_p, content_inner[1]);
 
@@ -266,7 +393,9 @@ pub fn render_settings_modal(
     if let Some(ref msg) = state.feedback_message {
         footer_spans.push(Span::styled(
             format!(" ✔ {}   ", msg),
-            Style::default().fg(Theme::ACCENT_GREEN).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Theme::ACCENT_GREEN)
+                .add_modifier(Modifier::BOLD),
         ));
     }
 
@@ -283,7 +412,11 @@ pub fn render_settings_modal(
     }
 
     let footer_p = Paragraph::new(Line::from(footer_spans))
-        .block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(Theme::BORDER_MUTED)))
+        .block(
+            Block::default()
+                .borders(Borders::TOP)
+                .border_style(Style::default().fg(Theme::BORDER_MUTED)),
+        )
         .alignment(Alignment::Center);
     f.render_widget(footer_p, inner_chunks[2]);
 
@@ -299,6 +432,10 @@ pub fn render_settings_modal(
             SettingsConfirmation::ClearWatchHistory => (
                 " ⚠ CLEAR WATCH HISTORY ",
                 format!("Are you sure you want to clear your watch history ({} items)?\nAll playback timestamps and progress records will be permanently erased.", history_count),
+            ),
+            SettingsConfirmation::ExportDiagnostics => (
+                " ℹ EXPORT DIAGNOSTIC REPORT ",
+                "Export a privacy-redacted diagnostic summary to ~/.local/state/kittymov/diagnostic_report.json?\nNo tokens or private passwords will be included.".to_string(),
             ),
             SettingsConfirmation::ResetDefaults => (
                 " ⚠ RESET ALL FACTORY DEFAULTS ",
@@ -321,27 +458,40 @@ pub fn render_settings_modal(
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Theme::ACCENT_PINK))
             .style(Style::default().bg(Theme::SURFACE_ALT))
-            .title(Span::styled(prompt_title, Style::default().fg(Theme::ACCENT_PINK).add_modifier(Modifier::BOLD)));
+            .title(Span::styled(
+                prompt_title,
+                Style::default()
+                    .fg(Theme::ACCENT_PINK)
+                    .add_modifier(Modifier::BOLD),
+            ));
 
         let conf_inner = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Min(3),
-                Constraint::Length(2),
-            ])
+            .constraints([Constraint::Min(3), Constraint::Length(2)])
             .margin(1)
             .split(conf_area);
 
         f.render_widget(conf_block, conf_area);
 
-        let msg_lines: Vec<Line> = prompt_msg.lines().map(|l| Line::from(Span::styled(l, Style::default().fg(Theme::TEXT_TITLE)))).collect();
+        let msg_lines: Vec<Line> = prompt_msg
+            .lines()
+            .map(|l| Line::from(Span::styled(l, Style::default().fg(Theme::TEXT_TITLE))))
+            .collect();
         let prompt_p = Paragraph::new(msg_lines).alignment(Alignment::Center);
         f.render_widget(prompt_p, conf_inner[0]);
 
         let action_line = Line::from(vec![
-            Span::styled(" [ Y ] Confirm Action ", Style::default().fg(Theme::ACCENT_PINK).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                " [ Y ] Confirm Action ",
+                Style::default()
+                    .fg(Theme::ACCENT_PINK)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled("      ", Style::default()),
-            Span::styled(" [ N / Esc ] Cancel ", Style::default().fg(Theme::TEXT_MUTED)),
+            Span::styled(
+                " [ N / Esc ] Cancel ",
+                Style::default().fg(Theme::TEXT_MUTED),
+            ),
         ]);
         let action_p = Paragraph::new(action_line).alignment(Alignment::Center);
         f.render_widget(action_p, conf_inner[1]);
@@ -364,15 +514,21 @@ impl SettingWidget {
                         " [ ON ] ",
                         Style::default()
                             .fg(Theme::ACCENT_GREEN)
-                            .bg(if is_selected { Theme::SELECTION_BG } else { Theme::SURFACE })
+                            .bg(if is_selected {
+                                Theme::SELECTION_BG
+                            } else {
+                                Theme::SURFACE
+                            })
                             .add_modifier(Modifier::BOLD),
                     )
                 } else {
                     Span::styled(
                         " [ OFF ] ",
-                        Style::default()
-                            .fg(Theme::TEXT_MUTED)
-                            .bg(if is_selected { Theme::SELECTION_BG } else { Theme::SURFACE }),
+                        Style::default().fg(Theme::TEXT_MUTED).bg(if is_selected {
+                            Theme::SELECTION_BG
+                        } else {
+                            Theme::SURFACE
+                        }),
                     )
                 }
             }
@@ -544,6 +700,11 @@ fn get_category_rows(
                 "Watch History Database",
                 SettingWidget::Action(format!("Clear Watch History ({} records)", history_count)),
                 "Clear playback timestamps, episode progress, and watch records from your local database.",
+            ),
+            (
+                "Export Diagnostic Report",
+                SettingWidget::Action("Export Sanitized Report".to_string()),
+                "Generate a redacted report with system, dependency, and network diagnostics for bug reports.",
             ),
             (
                 "Factory Reset",

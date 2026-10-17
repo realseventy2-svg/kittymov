@@ -1,7 +1,7 @@
-use std::path::Path;
-use std::process::{Command, Stdio};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span, Text};
+use std::path::Path;
+use std::process::{Command, Stdio};
 
 pub fn render_poster_to_text(path: &Path, width: u16, height: u16) -> Option<Text<'static>> {
     let size_arg = format!("{}x{}", width, height);
@@ -158,9 +158,11 @@ mod tests {
         let text = parse_ansi_to_text(sample);
         assert_eq!(text.lines.len(), 1);
         let spans = &text.lines[0].spans;
-        let block_span = spans.iter().find(|s| s.content == "▄").expect("Span with block character should exist");
+        let block_span = spans
+            .iter()
+            .find(|s| s.content == "▄")
+            .expect("Span with block character should exist");
         assert_eq!(block_span.style.fg, Some(Color::Rgb(5, 13, 26)));
         assert_eq!(block_span.style.bg, Some(Color::Rgb(5, 20, 39)));
     }
 }
-

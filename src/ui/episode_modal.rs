@@ -7,6 +7,7 @@ use ratatui::Frame;
 use super::theme::Theme;
 use crate::metadata::{TvEpisode, TvSeason};
 
+#[allow(clippy::too_many_arguments)]
 pub fn render_episode_modal(
     f: &mut Frame,
     area: Rect,
@@ -22,16 +23,25 @@ pub fn render_episode_modal(
     let popup_area = centered_rect(area, 75, 75);
     f.render_widget(Clear, popup_area);
 
-    let season_name = seasons.get(current_season_idx)
+    let season_name = seasons
+        .get(current_season_idx)
         .map(|s| s.name.as_str())
         .unwrap_or("Season");
 
     let is_sub = audio_mode.to_lowercase() == "sub";
     let mode_str = if is_sub { "[SUB]" } else { "[DUB]" };
     let auto_play_badge = if auto_play {
-        Span::styled(format!(" {} [AUTO-PLAY: ON] ", mode_str), Style::default().fg(Theme::ACCENT_GREEN).add_modifier(Modifier::BOLD))
+        Span::styled(
+            format!(" {} [AUTO-PLAY: ON] ", mode_str),
+            Style::default()
+                .fg(Theme::ACCENT_GREEN)
+                .add_modifier(Modifier::BOLD),
+        )
     } else {
-        Span::styled(format!(" {} [AUTO-PLAY: OFF] ", mode_str), Style::default().fg(Theme::TEXT_MUTED))
+        Span::styled(
+            format!(" {} [AUTO-PLAY: OFF] ", mode_str),
+            Style::default().fg(Theme::TEXT_MUTED),
+        )
     };
 
     let title_line = format!(" {} • {} ", series_title, season_name);
@@ -39,7 +49,12 @@ pub fn render_episode_modal(
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Theme::BORDER))
         .style(Style::default().bg(Theme::SURFACE))
-        .title(Span::styled(title_line, Style::default().fg(Theme::ACCENT_CYAN).add_modifier(Modifier::BOLD)))
+        .title(Span::styled(
+            title_line,
+            Style::default()
+                .fg(Theme::ACCENT_CYAN)
+                .add_modifier(Modifier::BOLD),
+        ))
         .title(auto_play_badge.into_right_aligned_line());
 
     let inner_chunks = Layout::default()
@@ -56,15 +71,23 @@ pub fn render_episode_modal(
     f.render_widget(modal_block, popup_area);
 
     // 1. Season Switcher Bar
-    let mut season_spans = vec![
-        Span::styled("Seasons: ", Style::default().fg(Theme::TEXT_MUTED)),
-    ];
+    let mut season_spans = vec![Span::styled(
+        "Seasons: ",
+        Style::default().fg(Theme::TEXT_MUTED),
+    )];
     for (i, s) in seasons.iter().enumerate() {
-        let ep_count_str = if s.episode_count > 0 { format!(" ({})", s.episode_count) } else { String::new() };
+        let ep_count_str = if s.episode_count > 0 {
+            format!(" ({})", s.episode_count)
+        } else {
+            String::new()
+        };
         if i == current_season_idx {
             season_spans.push(Span::styled(
                 format!(" [ {}{} ] ", s.name, ep_count_str),
-                Style::default().fg(Theme::TEXT_TITLE).bg(Theme::SELECTION_BG).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Theme::TEXT_TITLE)
+                    .bg(Theme::SELECTION_BG)
+                    .add_modifier(Modifier::BOLD),
             ));
         } else {
             season_spans.push(Span::styled(
@@ -86,7 +109,10 @@ pub fn render_episode_modal(
 
     let mut ep_lines = Vec::new();
     if episodes.is_empty() {
-        ep_lines.push(Line::from(Span::styled("Loading episodes...", Style::default().fg(Theme::TEXT_MUTED))));
+        ep_lines.push(Line::from(Span::styled(
+            "Loading episodes...",
+            Style::default().fg(Theme::TEXT_MUTED),
+        )));
     } else {
         for (i, ep) in episodes[start_idx..end_idx].iter().enumerate() {
             let actual_idx = start_idx + i;
@@ -98,11 +124,33 @@ pub fn render_episode_modal(
 
             let line = if is_sel {
                 Line::from(vec![
-                    Span::styled(" ◆ ", Style::default().fg(Theme::ACCENT_PINK).add_modifier(Modifier::BOLD)),
-                    Span::styled(ep_code, Style::default().fg(Theme::ACCENT_CYAN).bg(Theme::SELECTION_BG).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        " ◆ ",
+                        Style::default()
+                            .fg(Theme::ACCENT_PINK)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        ep_code,
+                        Style::default()
+                            .fg(Theme::ACCENT_CYAN)
+                            .bg(Theme::SELECTION_BG)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                     Span::styled("  ", Style::default().bg(Theme::SELECTION_BG)),
-                    Span::styled(ep_title, Style::default().fg(Theme::TEXT_TITLE).bg(Theme::SELECTION_BG).add_modifier(Modifier::BOLD)),
-                    Span::styled(format!("  ({})", ep_dur), Style::default().fg(Theme::ACCENT_GREEN).bg(Theme::SELECTION_BG)),
+                    Span::styled(
+                        ep_title,
+                        Style::default()
+                            .fg(Theme::TEXT_TITLE)
+                            .bg(Theme::SELECTION_BG)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        format!("  ({})", ep_dur),
+                        Style::default()
+                            .fg(Theme::ACCENT_GREEN)
+                            .bg(Theme::SELECTION_BG),
+                    ),
                 ])
             } else {
                 Line::from(vec![
@@ -110,7 +158,10 @@ pub fn render_episode_modal(
                     Span::styled(ep_code, Style::default().fg(Theme::TEXT_MUTED)),
                     Span::styled("  ", Style::default()),
                     Span::styled(ep_title, Style::default().fg(Theme::TEXT_BODY)),
-                    Span::styled(format!("  ({})", ep_dur), Style::default().fg(Theme::BORDER_MUTED)),
+                    Span::styled(
+                        format!("  ({})", ep_dur),
+                        Style::default().fg(Theme::BORDER_MUTED),
+                    ),
                 ])
             };
             ep_lines.push(line);
@@ -130,7 +181,11 @@ pub fn render_episode_modal(
                 Span::styled(&ep.duration, Style::default().fg(Theme::ACCENT_GREEN)),
             ]),
             Line::from(Span::styled(
-                if ep.overview.is_empty() { "No overview available." } else { &ep.overview },
+                if ep.overview.is_empty() {
+                    "No overview available."
+                } else {
+                    &ep.overview
+                },
                 Style::default().fg(Theme::TEXT_MUTED),
             )),
         ];
@@ -146,9 +201,12 @@ pub fn render_episode_modal(
 
     // 4. Hotkey Hints
     let hints = Line::from(vec![
-        Span::styled(" [Enter] Watch   [s] Select Server   [d] Sub/Dub   [← / →] Season   [a] Auto-Play   [Esc] Close ", Style::default().fg(Theme::TEXT_MUTED)),
+        Span::styled(" [Enter] Watch   [s] Server   [t] Subs   [d] Sub/Dub   [← / →] Season   [a] Auto-Play   [?] Help   [Esc] Close ", Style::default().fg(Theme::TEXT_MUTED)),
     ]);
-    f.render_widget(Paragraph::new(hints).alignment(Alignment::Center), inner_chunks[3]);
+    f.render_widget(
+        Paragraph::new(hints).alignment(Alignment::Center),
+        inner_chunks[3],
+    );
 }
 
 fn centered_rect(r: Rect, percent_x: u16, percent_y: u16) -> Rect {

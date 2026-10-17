@@ -17,7 +17,9 @@ pub fn render_subtitle_modal(
     is_loading: bool,
 ) {
     let width = 64.min(area.width.saturating_sub(4)).max(45);
-    let height = (options.len() as u16 + 8).min(area.height.saturating_sub(4)).max(12);
+    let height = (options.len() as u16 + 8)
+        .min(area.height.saturating_sub(4))
+        .max(12);
 
     let popup_area = Rect {
         x: area.x + (area.width.saturating_sub(width)) / 2,
@@ -34,7 +36,9 @@ pub fn render_subtitle_modal(
         .style(Style::default().bg(Theme::SURFACE))
         .title(Span::styled(
             " KittyMov • Subtitle & Language Selector ",
-            Style::default().fg(Theme::ACCENT_CYAN).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Theme::ACCENT_CYAN)
+                .add_modifier(Modifier::BOLD),
         ));
 
     let inner_chunks = Layout::default()
@@ -51,8 +55,16 @@ pub fn render_subtitle_modal(
 
     // 1. Header subtitle
     let desc = Line::from(vec![
-        Span::styled(format!("Media: {}  ", target_title), Style::default().fg(Theme::TEXT_TITLE).add_modifier(Modifier::BOLD)),
-        Span::styled("• Source: OpenSubtitles.org CDN", Style::default().fg(Theme::TEXT_MUTED)),
+        Span::styled(
+            format!("Media: {}  ", target_title),
+            Style::default()
+                .fg(Theme::TEXT_TITLE)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "• Source: OpenSubtitles.org CDN",
+            Style::default().fg(Theme::TEXT_MUTED),
+        ),
     ]);
     f.render_widget(Paragraph::new(desc), inner_chunks[0]);
 
@@ -61,15 +73,21 @@ pub fn render_subtitle_modal(
 
     if is_loading {
         lines.push(Line::from(""));
-        lines.push(Line::from(vec![
-            Span::styled("   Fetching subtitle tracks from OpenSubtitles...", Style::default().fg(Theme::ACCENT_GOLD).add_modifier(Modifier::ITALIC)),
-        ]));
+        lines.push(Line::from(vec![Span::styled(
+            "   Fetching subtitle tracks from OpenSubtitles...",
+            Style::default()
+                .fg(Theme::ACCENT_GOLD)
+                .add_modifier(Modifier::ITALIC),
+        )]));
     } else if options.is_empty() {
         lines.push(Line::from(""));
-        lines.push(Line::from(vec![
-            Span::styled("   No external subtitle tracks found for this title.", Style::default().fg(Theme::TEXT_MUTED)),
-        ]));
-        lines.push(Line::from("   Embedded video captions will be used if available."));
+        lines.push(Line::from(vec![Span::styled(
+            "   No external subtitle tracks found for this title.",
+            Style::default().fg(Theme::TEXT_MUTED),
+        )]));
+        lines.push(Line::from(
+            "   Embedded video captions will be used if available.",
+        ));
     } else {
         for (i, opt) in options.iter().enumerate() {
             let is_sel = i == selected_idx;
@@ -80,18 +98,55 @@ pub fn render_subtitle_modal(
 
             if is_sel {
                 lines.push(Line::from(vec![
-                    Span::styled(" ◆ ", Style::default().fg(Theme::ACCENT_PINK).add_modifier(Modifier::BOLD)),
-                    Span::styled(format!("[{}] ", opt.lang_code), Style::default().fg(Theme::ACCENT_CYAN).bg(Theme::SELECTION_BG).add_modifier(Modifier::BOLD)),
-                    Span::styled(format!("{:<18}", opt.lang_name), Style::default().fg(Theme::TEXT_TITLE).bg(Theme::SELECTION_BG).add_modifier(Modifier::BOLD)),
-                    Span::styled(format!("{:<14}", count_str), Style::default().fg(Theme::TEXT_MUTED).bg(Theme::SELECTION_BG)),
-                    Span::styled(badge, Style::default().fg(Theme::ACCENT_GREEN).bg(Theme::SELECTION_BG).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        " ◆ ",
+                        Style::default()
+                            .fg(Theme::ACCENT_PINK)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        format!("[{}] ", opt.lang_code),
+                        Style::default()
+                            .fg(Theme::ACCENT_CYAN)
+                            .bg(Theme::SELECTION_BG)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        format!("{:<18}", opt.lang_name),
+                        Style::default()
+                            .fg(Theme::TEXT_TITLE)
+                            .bg(Theme::SELECTION_BG)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        format!("{:<14}", count_str),
+                        Style::default()
+                            .fg(Theme::TEXT_MUTED)
+                            .bg(Theme::SELECTION_BG),
+                    ),
+                    Span::styled(
+                        badge,
+                        Style::default()
+                            .fg(Theme::ACCENT_GREEN)
+                            .bg(Theme::SELECTION_BG)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                 ]));
             } else {
                 lines.push(Line::from(vec![
                     Span::styled("   ", Style::default()),
-                    Span::styled(format!("[{}] ", opt.lang_code), Style::default().fg(Theme::TEXT_MUTED)),
-                    Span::styled(format!("{:<18}", opt.lang_name), Style::default().fg(Theme::TEXT_BODY)),
-                    Span::styled(format!("{:<14}", count_str), Style::default().fg(Theme::BORDER_MUTED)),
+                    Span::styled(
+                        format!("[{}] ", opt.lang_code),
+                        Style::default().fg(Theme::TEXT_MUTED),
+                    ),
+                    Span::styled(
+                        format!("{:<18}", opt.lang_name),
+                        Style::default().fg(Theme::TEXT_BODY),
+                    ),
+                    Span::styled(
+                        format!("{:<14}", count_str),
+                        Style::default().fg(Theme::BORDER_MUTED),
+                    ),
                     Span::styled(badge, Style::default().fg(Theme::ACCENT_GREEN)),
                 ]));
             }
@@ -102,11 +157,16 @@ pub fn render_subtitle_modal(
     f.render_widget(p, inner_chunks[1]);
 
     // 3. Hotkey footer
-    let hints = Line::from(vec![
-        Span::styled(" [Enter] Select Language   [↑/↓] Navigate   [Esc] Close ", Style::default().fg(Theme::TEXT_MUTED)),
-    ]);
+    let hints = Line::from(vec![Span::styled(
+        " [Enter] Select Language   [↑/↓] Navigate   [Esc] Close ",
+        Style::default().fg(Theme::TEXT_MUTED),
+    )]);
     let footer_p = Paragraph::new(hints)
-        .block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(Theme::BORDER_MUTED)))
+        .block(
+            Block::default()
+                .borders(Borders::TOP)
+                .border_style(Style::default().fg(Theme::BORDER_MUTED)),
+        )
         .alignment(Alignment::Center);
     f.render_widget(footer_p, inner_chunks[2]);
 }

@@ -28,7 +28,8 @@ impl VixSrcProvider {
             .build()
             .unwrap_or_else(|_| Client::new());
 
-        let playlist_re = Regex::new(r"url:\s*'(https://vixsrc\.to/playlist/[0-9]+(?:\?[^']*)?)'").unwrap();
+        let playlist_re =
+            Regex::new(r"url:\s*'(https://vixsrc\.to/playlist/[0-9]+(?:\?[^']*)?)'").unwrap();
         let token_re = Regex::new(r"'token':\s*'([^']+)'").unwrap();
         let expires_re = Regex::new(r"'expires':\s*'([^']+)'").unwrap();
 
@@ -41,17 +42,23 @@ impl VixSrcProvider {
     }
 
     fn extract_from_html(&self, html: &str) -> Result<(String, String, u64), String> {
-        let p_match = self.playlist_re.captures(html)
+        let p_match = self
+            .playlist_re
+            .captures(html)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str())
             .ok_or_else(|| "Could not find playlist URL in embed HTML".to_string())?;
 
-        let token_match = self.token_re.captures(html)
+        let token_match = self
+            .token_re
+            .captures(html)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str())
             .ok_or_else(|| "Could not find token in embed HTML".to_string())?;
 
-        let expires_str = self.expires_re.captures(html)
+        let expires_str = self
+            .expires_re
+            .captures(html)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str())
             .ok_or_else(|| "Could not find expires in embed HTML".to_string())?;
@@ -78,29 +85,46 @@ impl Provider for VixSrcProvider {
             format!("{}/api/tv/{}/{}/{}", base_url, req.tmdb_id, s, e)
         };
 
-        let resp: VixSrcApiResponse = self.client.get(&api_url)
+        let resp: VixSrcApiResponse = self
+            .client
+            .get(&api_url)
             .header("User-Agent", USER_AGENT)
             .header("Accept", "*/*")
-            .send().await
+            .send()
+            .await
             .map_err(|e| format!("VixSrc API request failed: {}", e))?
-            .json().await
+            .json()
+            .await
             .map_err(|e| format!("Invalid JSON from VixSrc API: {}", e))?;
 
-        let embed_path = resp.src.ok_or_else(|| "No embed src returned by VixSrc API".to_string())?;
+        let embed_path = resp
+            .src
+            .ok_or_else(|| "No embed src returned by VixSrc API".to_string())?;
         let embed_url = format!("{}{}", base_url, embed_path);
 
-        let html = self.client.get(&embed_url)
+        let html = self
+            .client
+            .get(&embed_url)
             .header("User-Agent", USER_AGENT)
             .header("Referer", base_url)
-            .send().await
+            .send()
+            .await
             .map_err(|e| format!("Failed to fetch embed page: {}", e))?
-            .text().await
+            .text()
+            .await
             .map_err(|e| format!("Failed to read embed HTML: {}", e))?;
 
         let (base_playlist, token, expires_at) = self.extract_from_html(&html)?;
 
-        let sep = if base_playlist.contains('?') { "&" } else { "?" };
-        let master_url = format!("{}{}token={}&expires={}&asn=&h=1", base_playlist, sep, token, expires_at);
+        let sep = if base_playlist.contains('?') {
+            "&"
+        } else {
+            "?"
+        };
+        let master_url = format!(
+            "{}{}token={}&expires={}&asn=&h=1",
+            base_playlist, sep, token, expires_at
+        );
 
         let mut headers = HashMap::new();
         headers.insert("User-Agent".to_string(), USER_AGENT.to_string());
@@ -137,7 +161,11 @@ fn extract_title_from_embed_path(embed_path: &str) -> Option<String> {
     let decoded_url: String = url::form_urlencoded::parse(token.as_bytes())
         .map(|(k, _)| k.to_string())
         .collect();
-    let to_decode = if decoded_url.is_empty() { token } else { &decoded_url };
+    let to_decode = if decoded_url.is_empty() {
+        token
+    } else {
+        &decoded_url
+    };
     let bytes = BASE64_STANDARD.decode(to_decode.as_bytes()).ok()?;
     String::from_utf8(bytes).ok()
 }
