@@ -159,8 +159,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         app.execute_player(&stream, &display_title).await;
                     }
                     app::LoadingProgress::Failed(err) => {
+                        let title = app
+                            .playback_loading
+                            .as_ref()
+                            .map(|l| l.title.clone())
+                            .unwrap_or_else(|| "Selected Title".to_string());
+                        app.status_message = format!("Stream unavailable: {}", err);
+                        app.error_dialog = Some(crate::app::ErrorDialogState {
+                            title: title.clone(),
+                            primary_message: format!("Could not find stream for \"{}\"", title),
+                            technical_details: err.clone(),
+                            suggestions: vec![
+                                "Press [s] to open Provider & Server selector to test individual sources.".to_string(),
+                                "This title may be a recent theatrical/regional release not yet hosted on streaming CDNs.".to_string(),
+                                "Check if an alternate title or series season entry is available in search.".to_string(),
+                            ],
+                        });
                         app.playback_loading = None;
-                        app.status_message = format!("Playback error: {}", err);
                     }
                     _ => {}
                 }
@@ -203,6 +218,25 @@ async fn handle_key_event(
     code: KeyCode,
     _modifiers: crossterm::event::KeyModifiers,
 ) {
+    // -3. If Error Dialog is active, allow dismissal or jumping to provider selector
+    if app.error_dialog.is_some() {
+        match code {
+            KeyCode::Esc
+            | KeyCode::Enter
+            | KeyCode::Char(' ')
+            | KeyCode::Char('q')
+            | KeyCode::Char('x') => {
+                app.error_dialog = None;
+            }
+            KeyCode::Char('s') => {
+                app.error_dialog = None;
+                app.open_provider_modal_for_selected();
+            }
+            _ => {}
+        }
+        return;
+    }
+
     // -2. If Initial Setup Wizard is active
     if app.setup_wizard.is_some() {
         match code {

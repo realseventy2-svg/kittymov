@@ -27,8 +27,8 @@ pub fn render_catalog_panel(
         .constraints([
             Constraint::Length(7), // ASCII Banner
             Constraint::Length(3), // Search bar
-            Constraint::Min(8),    // List of items
-            Constraint::Length(3), // Action & status footer
+            Constraint::Min(6),    // List of items
+            Constraint::Length(4), // Action & status footer (2 inner rows)
         ])
         .split(area);
 
@@ -183,20 +183,66 @@ pub fn render_catalog_panel(
         Span::styled("[AutoNext: OFF] ", Style::default().fg(Theme::TEXT_MUTED))
     };
 
-    let footer_lines = vec![Line::from(vec![
+    let is_error = status_text.to_lowercase().contains("error")
+        || status_text.to_lowercase().contains("fail")
+        || status_text.to_lowercase().contains("unavailable")
+        || status_text.to_lowercase().contains("not found");
+
+    let status_line = if is_error {
+        Line::from(vec![
+            Span::styled(
+                "✖ Status: ",
+                Style::default()
+                    .fg(Theme::ACCENT_PINK)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                status_text,
+                Style::default()
+                    .fg(Theme::ACCENT_PINK)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ])
+    } else if !status_text.is_empty() && status_text != "Ready" {
+        Line::from(vec![
+            Span::styled(
+                "ℹ Status: ",
+                Style::default()
+                    .fg(Theme::ACCENT_CYAN)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(status_text, Style::default().fg(Theme::TEXT_BODY)),
+        ])
+    } else {
+        Line::from(vec![
+            Span::styled("● ", Style::default().fg(Theme::ACCENT_GREEN)),
+            Span::styled("Ready", Style::default().fg(Theme::TEXT_MUTED)),
+            Span::styled("  •  Catalog: ", Style::default().fg(Theme::BORDER_MUTED)),
+            Span::styled(active_tab_name, Style::default().fg(Theme::ACCENT_CYAN)),
+        ])
+    };
+
+    let controls_line = Line::from(vec![
         mode_badge,
         server_badge,
         auto_play_str,
+        Span::styled("│ ", Style::default().fg(Theme::BORDER_MUTED)),
         Span::styled(
-            "[?] Help  [Enter] Tracks  [p] Play  [s] Tracks  [d] Sub/Dub  [S] Settings  [f] Fav  ",
+            "[?] Help  [Enter] Watch  [s] Providers  [t] Subs  [d] Sub/Dub  [o] Order  [f] Fav  [S] Settings",
             Style::default().fg(Theme::TEXT_MUTED),
         ),
-        Span::styled(status_text, Style::default().fg(Theme::TEXT_BODY)),
-    ])];
+    ]);
+
+    let footer_border_color = if is_error {
+        Theme::ACCENT_PINK
+    } else {
+        Theme::BORDER_MUTED
+    };
+
     let footer_block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Theme::BORDER_MUTED))
+        .border_style(Style::default().fg(footer_border_color))
         .style(Style::default().bg(Theme::SURFACE));
-    let footer_p = Paragraph::new(footer_lines).block(footer_block);
+    let footer_p = Paragraph::new(vec![status_line, controls_line]).block(footer_block);
     f.render_widget(footer_p, chunks[3]);
 }

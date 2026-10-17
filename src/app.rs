@@ -499,6 +499,14 @@ pub struct SubtitleSelectModalState {
     pub is_loading: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct ErrorDialogState {
+    pub title: String,
+    pub primary_message: String,
+    pub technical_details: String,
+    pub suggestions: Vec<String>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsPane {
     Categories,
@@ -1000,6 +1008,7 @@ pub struct App {
     pub loading_rx: Option<tokio::sync::mpsc::UnboundedReceiver<LoadingProgress>>,
     pub loading_task: Option<tokio::task::JoinHandle<()>>,
     pub subtitles: Arc<crate::subtitles::SubtitleManager>,
+    pub error_dialog: Option<ErrorDialogState>,
     pub setup_wizard: Option<SetupWizardState>,
     pub show_help: bool,
     pub should_quit: bool,
@@ -1031,6 +1040,7 @@ impl App {
             playback_loading: None,
             loading_rx: None,
             loading_task: None,
+            error_dialog: None,
             setup_wizard: None,
             show_help: false,
             should_quit: false,
@@ -2442,7 +2452,7 @@ impl App {
                                     detail: format!("Both providers failed: {}", err_fallback),
                                 });
                                 let _ = tx.send(LoadingProgress::Failed(format!(
-                                    "Primary ({}) and Fallback (LookMovie) failed: {}",
+                                    "Both providers failed: VixSrc ({}), LookMovie ({})",
                                     err_primary, err_fallback
                                 )));
                                 return;
@@ -2455,7 +2465,7 @@ impl App {
                             detail: format!("Provider connection failed: {}", err_primary),
                         });
                         let _ = tx.send(LoadingProgress::Failed(format!(
-                            "Provider error: {}",
+                            "Provider failed: {}",
                             err_primary
                         )));
                         return;

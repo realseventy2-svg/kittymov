@@ -1,5 +1,6 @@
 pub mod banner;
 pub mod catalog_list;
+pub mod error_dialog;
 pub mod episode_modal;
 pub mod help_modal;
 pub mod loading_screen;
@@ -18,6 +19,7 @@ use ratatui::Frame;
 
 use self::catalog_list::render_catalog_panel;
 use self::episode_modal::render_episode_modal;
+use self::error_dialog::render_error_dialog;
 use self::loading_screen::render_loading_screen;
 use self::metadata_panel::render_metadata_panel;
 use self::provider_modal::render_provider_modal;
@@ -146,5 +148,10 @@ pub fn render_ui(f: &mut Frame, app: &App) {
     // If Help modal is active, overlay it
     if app.show_help {
         help_modal::render_help_modal(f, size);
+    }
+
+    // If Error Dialog modal is active, overlay it
+    if let Some(ref err_dialog) = app.error_dialog {
+        render_error_dialog(f, size, err_dialog);
     }
 }

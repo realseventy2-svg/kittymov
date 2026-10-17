@@ -85,31 +85,47 @@ impl Provider for VixSrcProvider {
             format!("{}/api/tv/{}/{}/{}", base_url, req.tmdb_id, s, e)
         };
 
-        let resp: VixSrcApiResponse = self
+        let resp = self
             .client
             .get(&api_url)
             .header("User-Agent", USER_AGENT)
             .header("Accept", "*/*")
             .send()
             .await
-            .map_err(|e| format!("VixSrc API request failed: {}", e))?
+            .map_err(|e| format!("VixSrc network error: {}", e))?;
+
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Err("Title not found on VixSrc (HTTP 404)".to_string());
+        }
+
+        if !resp.status().is_success() {
+            return Err(format!("VixSrc returned HTTP {}", resp.status()));
+        }
+
+        let resp_json: VixSrcApiResponse = resp
             .json()
             .await
             .map_err(|e| format!("Invalid JSON from VixSrc API: {}", e))?;
 
-        let embed_path = resp
+        let embed_path = resp_json
             .src
             .ok_or_else(|| "No embed src returned by VixSrc API".to_string())?;
         let embed_url = format!("{}{}", base_url, embed_path);
 
-        let html = self
+        let embed_resp = self
             .client
             .get(&embed_url)
             .header("User-Agent", USER_AGENT)
             .header("Referer", base_url)
             .send()
             .await
-            .map_err(|e| format!("Failed to fetch embed page: {}", e))?
+            .map_err(|e| format!("Failed to reach VixSrc embed host: {}", e))?;
+
+        if !embed_resp.status().is_success() {
+            return Err(format!("VixSrc embed host returned HTTP {}", embed_resp.status()));
+        }
+
+        let html = embed_resp
             .text()
             .await
             .map_err(|e| format!("Failed to read embed HTML: {}", e))?;

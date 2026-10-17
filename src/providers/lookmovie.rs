@@ -130,21 +130,31 @@ impl Provider for LookMovieProvider {
             base_url, search_endpoint, encoded_query
         );
 
-        let search_resp: SearchResponse = self
+        let search_res = self
             .client
             .get(&search_url)
             .header("User-Agent", USER_AGENT)
             .header("Accept", "application/json")
             .send()
             .await
-            .map_err(|e| format!("LookMovie search request failed: {}", e))?
+            .map_err(|e| format!("LookMovie network error: {}", e))?;
+
+        if search_res.status() == reqwest::StatusCode::NOT_FOUND {
+            return Err(format!("LookMovie: Title '{}' not found (HTTP 404)", req.title));
+        }
+
+        if !search_res.status().is_success() {
+            return Err(format!("LookMovie search returned HTTP {}", search_res.status()));
+        }
+
+        let search_resp: SearchResponse = search_res
             .json()
             .await
             .map_err(|e| format!("Invalid search JSON from LookMovie: {}", e))?;
 
         if search_resp.result.is_empty() {
             return Err(format!(
-                "LookMovie: No search results found for '{}'",
+                "LookMovie: No stream entries found for '{}'",
                 req.title
             ));
         }
