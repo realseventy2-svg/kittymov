@@ -1346,7 +1346,16 @@ impl App {
                         )
                         .await;
                     if !external_subs.is_empty() {
-                        stream.subtitles = external_subs;
+                        if stream.subtitles.is_empty() {
+                            stream.subtitles = external_subs;
+                        } else {
+                            // Preserve provider-native subtitles (exact sync) and append external tracks
+                            for ext in external_subs {
+                                if !stream.subtitles.contains(&ext) {
+                                    stream.subtitles.push(ext);
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -1451,7 +1460,16 @@ impl App {
                         )
                         .await;
                     if !external_subs.is_empty() {
-                        stream.subtitles = external_subs;
+                        if stream.subtitles.is_empty() {
+                            stream.subtitles = external_subs;
+                        } else {
+                            // Preserve provider-native subtitles (exact sync) and append external tracks
+                            for ext in external_subs {
+                                if !stream.subtitles.contains(&ext) {
+                                    stream.subtitles.push(ext);
+                                }
+                            }
+                        }
                     }
                 }
 

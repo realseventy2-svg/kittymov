@@ -77,6 +77,7 @@ impl MpvController {
             cmd.arg("--subs-with-matching-audio=yes");
             cmd.arg("--sid=auto");
             cmd.arg("--sub-auto=fuzzy");
+            cmd.arg("--sub-fix-timing=yes");
             cmd.arg("--demuxer-mkv-subtitle-preroll=yes");
         } else {
             cmd.arg(format!(
@@ -91,6 +92,7 @@ impl MpvController {
             cmd.arg("--subs-with-matching-audio=yes");
             cmd.arg("--sid=auto");
             cmd.arg("--sub-auto=fuzzy");
+            cmd.arg("--sub-fix-timing=yes");
             cmd.arg("--demuxer-mkv-subtitle-preroll=yes");
         }
         cmd.arg(format!("--hwdec={}", cfg.hwdec));

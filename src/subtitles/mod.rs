@@ -279,10 +279,23 @@ impl SubtitleManager {
                 }
             })
             .collect();
-
+        let track_suffix: String = track
+            .id
+            .chars()
+            .filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-')
+            .take(12)
+            .collect();
         let filename = format!(
-            "{}.{}.{}.{}",
-            clean_prefix, track.lang, track.lang_name, track.format
+            "{}.{}.{}.{}.{}",
+            clean_prefix,
+            track.lang,
+            track.lang_name,
+            if track_suffix.is_empty() {
+                "sub"
+            } else {
+                &track_suffix
+            },
+            track.format
         );
         let dest = cache_dir.join(&filename);
 
@@ -355,14 +368,15 @@ impl SubtitleManager {
         let mut selected_tracks: Vec<SubtitleTrack> = Vec::new();
         let mut added_langs = HashMap::new();
 
-        // 1. First add preferred language
+        // 1. First add up to 3 diverse tracks for the preferred language (gives alternate syncs/releases)
+        let mut pref_count = 0;
         for t in &all_tracks {
-            if t.lang == pref_norm && !added_langs.contains_key(&t.lang) {
+            if t.lang == pref_norm && pref_count < 3 {
                 selected_tracks.push(t.clone());
-                added_langs.insert(t.lang.clone(), true);
-                break;
+                pref_count += 1;
             }
         }
+        added_langs.insert(pref_norm.clone(), true);
 
         // 2. Add other languages up to 6 total tracks
         let priority_langs = [

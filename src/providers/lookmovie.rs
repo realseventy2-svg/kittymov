@@ -382,66 +382,163 @@ fn unescape_js_string(s: &str) -> String {
 }
 
 fn find_episode_id(val: &serde_json::Value, season_str: &str, episode_str: &str) -> Option<String> {
-    let seasons_map = val.as_object()?;
-    let season_obj = seasons_map.get(season_str)?;
+    let get_id = |ep: &serde_json::Value| -> Option<String> {
+        if let Some(id) = ep.get("id_episode") {
+            if let Some(s) = id.as_str() {
+                return Some(s.to_string());
+            } else if let Some(n) = id.as_i64() {
+                return Some(n.to_string());
+            }
+        }
+        None
+    };
+
+    let ep_number_matches = |ep: &serde_json::Value, target_str: &str| -> bool {
+        let check = |v: &serde_json::Value| -> bool {
+            if let Some(s) = v.as_str() {
+                s == target_str || s.trim_start_matches('0') == target_str.trim_start_matches('0')
+            } else if let Some(n) = v.as_i64() {
+                n.to_string() == target_str
+            } else {
+                false
+            }
+        };
+
+        if let Some(v) = ep.get("episode_number") {
+            if check(v) {
+                return true;
+            }
+        }
+        if let Some(v) = ep.get("episode") {
+            if check(v) {
+                return true;
+            }
+        }
+        if let Some(v) = ep.get("number") {
+            if check(v) {
+                return true;
+            }
+        }
+        false
+    };
+
+    // Find the season object in val
+    let season_obj = if let Some(seasons_map) = val.as_object() {
+        seasons_map
+            .get(season_str)
+            .or_else(|| {
+                let norm = season_str.trim_start_matches('0');
+                seasons_map
+                    .iter()
+                    .find(|(k, _)| k.trim_start_matches('0') == norm)
+                    .map(|(_, v)| v)
+            })
+            .cloned()
+    } else if let Some(seasons_list) = val.as_array() {
+        seasons_list
+            .iter()
+            .find(|s| {
+                let check = |v: &serde_json::Value| {
+                    if let Some(str_v) = v.as_str() {
+                        str_v == season_str
+                            || str_v.trim_start_matches('0') == season_str.trim_start_matches('0')
+                    } else if let Some(n) = v.as_i64() {
+                        n.to_string() == season_str
+                    } else {
+                        false
+                    }
+                };
+                s.get("season_number").is_some_and(check) || s.get("season").is_some_and(check)
+            })
+            .cloned()
+    } else {
+        None
+    }?;
+
     let eps_val = season_obj.get("episodes")?;
 
     // 1. If episodes is a JSON array
     if let Some(episodes_list) = eps_val.as_array() {
+        // Pass 1: Strict match on episode number metadata
         for ep in episodes_list {
-            let ep_num_match = ep
-                .get("episode_number")
-                .and_then(|v| {
-                    v.as_str()
-                        .map(|s| s == episode_str)
-                        .or_else(|| v.as_i64().map(|n| n.to_string() == episode_str))
-                })
-                .unwrap_or(false);
-
-            if ep_num_match {
-                if let Some(id) = ep.get("id_episode") {
-                    if let Some(s) = id.as_str() {
-                        return Some(s.to_string());
-                    } else if let Some(n) = id.as_i64() {
-                        return Some(n.to_string());
+            if ep_number_matches(ep, episode_str) {
+                if let Some(id) = get_id(ep) {
+                    return Some(id);
+                }
+            }
+        }
+        // Pass 2: Fallback to 1-based index if metadata is missing
+        if let Ok(num) = episode_str.parse::<usize>() {
+            if num > 0 && num <= episodes_list.len() {
+                if let Some(ep) = episodes_list.get(num - 1) {
+                    if let Some(id) = get_id(ep) {
+                        return Some(id);
                     }
                 }
             }
         }
     } else if let Some(episodes_map) = eps_val.as_object() {
         // 2. If episodes is a JSON object / map
-        if let Some(ep) = episodes_map.get(episode_str) {
-            if let Some(id) = ep.get("id_episode") {
-                if let Some(s) = id.as_str() {
-                    return Some(s.to_string());
-                } else if let Some(n) = id.as_i64() {
-                    return Some(n.to_string());
+        // Pass 1: Strict match on episode_number across all items (prevents 0-based key offset bugs)
+        for (_k, ep) in episodes_map {
+            if ep_number_matches(ep, episode_str) {
+                if let Some(id) = get_id(ep) {
+                    return Some(id);
                 }
             }
         }
 
+        // Pass 2: Only fallback to dictionary key if no episode_number metadata matched
+        let norm_ep = episode_str.trim_start_matches('0');
         for (k, ep) in episodes_map {
-            let key_match = k == episode_str;
-            let ep_num_match = ep
-                .get("episode_number")
-                .and_then(|v| {
-                    v.as_str()
-                        .map(|s| s == episode_str)
-                        .or_else(|| v.as_i64().map(|n| n.to_string() == episode_str))
-                })
-                .unwrap_or(false);
-
-            if key_match || ep_num_match {
-                if let Some(id) = ep.get("id_episode") {
-                    if let Some(s) = id.as_str() {
-                        return Some(s.to_string());
-                    } else if let Some(n) = id.as_i64() {
-                        return Some(n.to_string());
-                    }
+            if k == episode_str || k.trim_start_matches('0') == norm_ep {
+                if let Some(id) = get_id(ep) {
+                    return Some(id);
                 }
             }
         }
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_find_episode_id_zero_based_dict_no_offset() {
+        // Simulates LookMovie dictionary with 0-based string keys
+        let raw = serde_json::json!({
+            "1": {
+                "episodes": {
+                    "0": { "id_episode": 100, "episode_number": 1, "title": "Pilot" },
+                    "1": { "id_episode": 101, "episode_number": 2, "title": "Second" },
+                    "2": { "id_episode": 102, "episode_number": 3, "title": "Third" }
+                }
+            }
+        });
+
+        // Episode 1 must resolve to id 100, NOT id 101!
+        assert_eq!(find_episode_id(&raw, "1", "1"), Some("100".to_string()));
+        assert_eq!(find_episode_id(&raw, "1", "2"), Some("101".to_string()));
+        assert_eq!(find_episode_id(&raw, "1", "3"), Some("102".to_string()));
+    }
+
+    #[test]
+    fn test_find_episode_id_array_with_pilot_zero() {
+        // Simulates LookMovie array with Pilot (episode 0) at index 0
+        let raw = serde_json::json!({
+            "3": {
+                "episodes": [
+                    { "id_episode": "pilot_id", "episode_number": 0, "title": "Pilot" },
+                    { "id_episode": "ep1_id", "episode_number": 1, "title": "Super Watermelon Island" },
+                    { "id_episode": "ep2_id", "episode_number": 2, "title": "Gem Drill" }
+                ]
+            }
+        });
+
+        assert_eq!(find_episode_id(&raw, "3", "1"), Some("ep1_id".to_string()));
+        assert_eq!(find_episode_id(&raw, "3", "2"), Some("ep2_id".to_string()));
+    }
 }

@@ -202,6 +202,13 @@ pub fn render_help_modal(f: &mut Frame, area: Rect) {
         ),
     ]));
     lines.push(Line::from(vec![
+        Span::styled("  [z / Z]       ", Style::default().fg(Theme::ACCENT_GOLD)),
+        Span::styled(
+            "Adjust subtitle timing delay (-100ms / +100ms)",
+            Style::default().fg(Theme::TEXT_BODY),
+        ),
+    ]));
+    lines.push(Line::from(vec![
         Span::styled("  [#]           ", Style::default().fg(Theme::ACCENT_GOLD)),
         Span::styled(
             "Cycle audio language tracks",
