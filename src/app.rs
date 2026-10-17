@@ -26,12 +26,347 @@ pub struct ProviderOption {
     pub description: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderModalCategory {
+    Provider,
+    Quality,
+    Subtitles,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderModalPane {
+    Categories,
+    Content,
+}
+
+#[derive(Debug, Clone)]
+pub struct QualityTrackOption {
+    pub label: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct SubtitleTrackOption {
+    pub label: String,
+    pub lang_code: String,
+    pub badge: String,
+    pub is_native: bool,
+    pub description: String,
+    #[allow(dead_code)]
+    pub file_or_url: String,
+}
+
+pub fn default_qualities_for_provider(provider_id: &str) -> Vec<QualityTrackOption> {
+    match provider_id.to_lowercase().as_str() {
+        "lookmovie" => vec![
+            QualityTrackOption {
+                label: "Auto (1080p)".to_string(),
+                description: "Highest available LookMovie CDN stream".to_string(),
+            },
+            QualityTrackOption {
+                label: "1080p FHD".to_string(),
+                description: "LookMovie 1080p high bitrate encode".to_string(),
+            },
+            QualityTrackOption {
+                label: "720p HD".to_string(),
+                description: "720p high efficiency stream for smooth playback".to_string(),
+            },
+            QualityTrackOption {
+                label: "480p SD".to_string(),
+                description: "Standard definition low-bandwidth stream".to_string(),
+            },
+        ],
+        "vixsrc" => vec![
+            QualityTrackOption {
+                label: "Auto (1080p)".to_string(),
+                description: "VixSrc Ultra-Fast adaptive HLS stream".to_string(),
+            },
+            QualityTrackOption {
+                label: "1080p FHD".to_string(),
+                description: "1080p primary content delivery stream".to_string(),
+            },
+            QualityTrackOption {
+                label: "720p HD".to_string(),
+                description: "720p compressed stream".to_string(),
+            },
+        ],
+        _ => vec![
+            QualityTrackOption {
+                label: "Auto (Best Match)".to_string(),
+                description: "Auto-negotiate highest available resolution".to_string(),
+            },
+            QualityTrackOption {
+                label: "1080p FHD".to_string(),
+                description: "Preferred 1080p FHD".to_string(),
+            },
+            QualityTrackOption {
+                label: "720p HD".to_string(),
+                description: "Preferred 720p HD".to_string(),
+            },
+        ],
+    }
+}
+
+pub fn default_subtitles_for_provider(
+    provider_id: &str,
+    preferred_lang: &str,
+) -> Vec<SubtitleTrackOption> {
+    let preferred_name = lang_name(preferred_lang);
+    match provider_id.to_lowercase().as_str() {
+        "lookmovie" => vec![
+            SubtitleTrackOption {
+                label: "Auto Match".to_string(),
+                lang_code: preferred_lang.to_string(),
+                badge: "NATIVE".to_string(),
+                is_native: true,
+                description: format!(
+                    "Pre-synced provider track (LookMovie .vtt • {})",
+                    preferred_name
+                ),
+                file_or_url: String::new(),
+            },
+            SubtitleTrackOption {
+                label: format!("{} [Native]", preferred_name),
+                lang_code: preferred_lang.to_string(),
+                badge: "NATIVE".to_string(),
+                is_native: true,
+                description: "LookMovie Native (.vtt) • Pre-synced to video encode".to_string(),
+                file_or_url: String::new(),
+            },
+            SubtitleTrackOption {
+                label: format!("{} [OpenSubtitles]", preferred_name),
+                lang_code: preferred_lang.to_string(),
+                badge: "CLOUD".to_string(),
+                is_native: false,
+                description: "OpenSubtitles.org (.srt) • Community external subtitle".to_string(),
+                file_or_url: String::new(),
+            },
+            SubtitleTrackOption {
+                label: "Spanish [Native]".to_string(),
+                lang_code: "spa".to_string(),
+                badge: "NATIVE".to_string(),
+                is_native: true,
+                description: "LookMovie Native (.vtt) • Pre-synced Spanish subtitle".to_string(),
+                file_or_url: String::new(),
+            },
+            SubtitleTrackOption {
+                label: "French [Native]".to_string(),
+                lang_code: "fra".to_string(),
+                badge: "NATIVE".to_string(),
+                is_native: true,
+                description: "LookMovie Native (.vtt) • Pre-synced French subtitle".to_string(),
+                file_or_url: String::new(),
+            },
+            SubtitleTrackOption {
+                label: "Off".to_string(),
+                lang_code: "off".to_string(),
+                badge: "OFF".to_string(),
+                is_native: false,
+                description: "Disable subtitle display during playback".to_string(),
+                file_or_url: String::new(),
+            },
+        ],
+        "vixsrc" => vec![
+            SubtitleTrackOption {
+                label: "Auto Match".to_string(),
+                lang_code: preferred_lang.to_string(),
+                badge: "CLOUD".to_string(),
+                is_native: false,
+                description: format!(
+                    "OpenSubtitles.org (.srt) • Auto-fetch cloud subtitle [{}]",
+                    preferred_name
+                ),
+                file_or_url: String::new(),
+            },
+            SubtitleTrackOption {
+                label: format!("{} [Cloud]", preferred_name),
+                lang_code: preferred_lang.to_string(),
+                badge: "CLOUD".to_string(),
+                is_native: false,
+                description: "OpenSubtitles.org (.srt) • Cloud Subtitle".to_string(),
+                file_or_url: String::new(),
+            },
+            SubtitleTrackOption {
+                label: "Spanish [Cloud]".to_string(),
+                lang_code: "spa".to_string(),
+                badge: "CLOUD".to_string(),
+                is_native: false,
+                description: "OpenSubtitles.org (.srt) • Cloud Subtitle".to_string(),
+                file_or_url: String::new(),
+            },
+            SubtitleTrackOption {
+                label: "French [Cloud]".to_string(),
+                lang_code: "fra".to_string(),
+                badge: "CLOUD".to_string(),
+                is_native: false,
+                description: "OpenSubtitles.org (.srt) • Cloud Subtitle".to_string(),
+                file_or_url: String::new(),
+            },
+            SubtitleTrackOption {
+                label: "Off".to_string(),
+                lang_code: "off".to_string(),
+                badge: "OFF".to_string(),
+                is_native: false,
+                description: "Disable subtitle display during playback".to_string(),
+                file_or_url: String::new(),
+            },
+        ],
+        _ => vec![
+            SubtitleTrackOption {
+                label: "Auto Match".to_string(),
+                lang_code: preferred_lang.to_string(),
+                badge: "SMART".to_string(),
+                is_native: true,
+                description: format!(
+                    "Provider native if available, OpenSubtitles fallback [{}]",
+                    preferred_name
+                ),
+                file_or_url: String::new(),
+            },
+            SubtitleTrackOption {
+                label: format!("{} [Auto]", preferred_name),
+                lang_code: preferred_lang.to_string(),
+                badge: "AUTO".to_string(),
+                is_native: true,
+                description: "Best available match (Native .vtt or OpenSubtitles .srt)".to_string(),
+                file_or_url: String::new(),
+            },
+            SubtitleTrackOption {
+                label: "Off".to_string(),
+                lang_code: "off".to_string(),
+                badge: "OFF".to_string(),
+                is_native: false,
+                description: "Disable subtitle display during playback".to_string(),
+                file_or_url: String::new(),
+            },
+        ],
+    }
+}
+
 pub struct ProviderSelectModalState {
     pub target_title: String,
     pub request: MediaRequest,
     pub poster_path: String,
+    pub active_category: ProviderModalCategory,
+    pub active_pane: ProviderModalPane,
     pub options: Vec<ProviderOption>,
     pub selected_idx: usize,
+    pub qualities: Vec<QualityTrackOption>,
+    pub selected_quality_idx: usize,
+    pub subtitles: Vec<SubtitleTrackOption>,
+    pub selected_subtitle_idx: usize,
+    pub is_loading_subtitles: bool,
+}
+
+impl ProviderSelectModalState {
+    pub fn new(
+        target_title: String,
+        request: MediaRequest,
+        poster_path: String,
+        preferred_provider: &str,
+        preferred_lang: &str,
+    ) -> Self {
+        let options = default_provider_options();
+        let selected_idx = options
+            .iter()
+            .position(|o| o.id.eq_ignore_ascii_case(preferred_provider))
+            .unwrap_or(0);
+        let chosen_prov = options[selected_idx].id.as_str();
+        let qualities = default_qualities_for_provider(chosen_prov);
+        let subtitles = default_subtitles_for_provider(chosen_prov, preferred_lang);
+
+        Self {
+            target_title,
+            request,
+            poster_path,
+            active_category: ProviderModalCategory::Provider,
+            active_pane: ProviderModalPane::Categories,
+            options,
+            selected_idx,
+            qualities,
+            selected_quality_idx: 0,
+            subtitles,
+            selected_subtitle_idx: 0,
+            is_loading_subtitles: false,
+        }
+    }
+
+    pub fn update_dependent_tracks(&mut self, preferred_lang: &str) {
+        let prov_id = self
+            .options
+            .get(self.selected_idx)
+            .map(|o| o.id.as_str())
+            .unwrap_or("auto");
+        self.qualities = default_qualities_for_provider(prov_id);
+        self.selected_quality_idx = 0;
+        self.subtitles = default_subtitles_for_provider(prov_id, preferred_lang);
+        self.selected_subtitle_idx = 0;
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoadingStep {
+    ResolvingMetadata,
+    ConnectingProvider,
+    FetchingSubtitles,
+    LaunchingPlayer,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StepStatus {
+    Pending,
+    Active,
+    Completed,
+    Failed,
+}
+
+#[derive(Debug, Clone)]
+pub struct StepProgressItem {
+    pub step: LoadingStep,
+    pub status: StepStatus,
+    pub title: &'static str,
+    pub detail: String,
+}
+
+pub struct PlaybackLoadingState {
+    pub title: String,
+    pub subtitle: String,
+    pub media_type: String,
+    pub provider_name: String,
+    pub current_step: LoadingStep,
+    pub steps: Vec<StepProgressItem>,
+    pub session_autoskip: bool,
+    pub session_autoplay: bool,
+    pub session_audio_mode: String,
+    pub poster_text: Option<ratatui::text::Text<'static>>,
+    pub year: String,
+    pub genre: String,
+    pub score: f64,
+    #[allow(dead_code)]
+    pub episodes_count: Option<i32>,
+    pub studio: String,
+    pub synopsis: String,
+    pub up_next: Option<String>,
+    pub spinner_idx: usize,
+    pub request: MediaRequest,
+    pub poster_path: String,
+}
+
+#[derive(Debug)]
+pub enum LoadingProgress {
+    StepUpdate {
+        step: LoadingStep,
+        status: StepStatus,
+        detail: String,
+    },
+    FallbackNotice {
+        new_provider: String,
+    },
+    Ready {
+        stream: Box<StreamCandidate>,
+        display_title: String,
+    },
+    Failed(String),
 }
 
 #[derive(Debug, Clone)]
@@ -466,6 +801,9 @@ pub struct App {
     pub provider_modal: Option<ProviderSelectModalState>,
     pub subtitle_modal: Option<SubtitleSelectModalState>,
     pub settings_modal: Option<SettingsModalState>,
+    pub playback_loading: Option<PlaybackLoadingState>,
+    pub loading_rx: Option<tokio::sync::mpsc::UnboundedReceiver<LoadingProgress>>,
+    pub loading_task: Option<tokio::task::JoinHandle<()>>,
     pub subtitles: Arc<crate::subtitles::SubtitleManager>,
     pub show_help: bool,
     pub should_quit: bool,
@@ -494,6 +832,9 @@ impl App {
             provider_modal: None,
             subtitle_modal: None,
             settings_modal: None,
+            playback_loading: None,
+            loading_rx: None,
+            loading_task: None,
             show_help: false,
             should_quit: false,
         }
@@ -715,23 +1056,40 @@ impl App {
             return;
         }
 
-        if let Some(ref mut modal) = self.episode_modal {
-            // Watch selected episode from modal
-            if let Some(ep) = modal.episodes.get(modal.selected_episode_idx) {
+        let ep_play_info = if let Some(ref modal) = self.episode_modal {
+            modal.episodes.get(modal.selected_episode_idx).map(|ep| {
                 let season_num = modal
                     .seasons
                     .get(modal.selected_season_idx)
                     .map(|s| s.season_number)
                     .unwrap_or(1);
-                let ep_num = ep.episode_number;
-                let title = modal.series.title.clone();
-                let year = modal.series.year.clone();
-                let poster = modal.series.poster_path.clone();
-                let tmdb_id = modal.series.tmdb_id;
+                (
+                    modal.series.tmdb_id,
+                    modal.series.title.clone(),
+                    modal.series.year.clone(),
+                    modal.series.poster_path.clone(),
+                    season_num,
+                    ep.episode_number,
+                    modal.series.clone(),
+                )
+            })
+        } else {
+            None
+        };
 
-                self.play_tv_series(tmdb_id, &title, &year, &poster, season_num, ep_num)
-                    .await;
-            }
+        if let Some((tmdb_id, title, year, poster, season_num, ep_num, series)) = ep_play_info {
+            let req = MediaRequest {
+                tmdb_id,
+                media_type: "tv".to_string(),
+                season: Some(season_num),
+                episode: Some(ep_num),
+                title,
+                year: Some(year),
+            };
+
+            let choice = self.cfg.preferred_provider.clone();
+            self.start_playback_loading(req, poster, choice, None, None, Some(series))
+                .await;
             return;
         }
 
@@ -739,7 +1097,24 @@ impl App {
             if item.media_type == "tv" {
                 self.open_episode_modal(item).await;
             } else {
-                self.play_movie(item).await;
+                let req = MediaRequest {
+                    tmdb_id: item.tmdb_id,
+                    media_type: "movie".to_string(),
+                    season: None,
+                    episode: None,
+                    title: item.title.clone(),
+                    year: Some(item.year.clone()),
+                };
+                let choice = self.cfg.preferred_provider.clone();
+                self.start_playback_loading(
+                    req,
+                    item.poster_path.clone(),
+                    choice,
+                    None,
+                    None,
+                    Some(item),
+                )
+                .await;
             }
         }
     }
@@ -1184,13 +1559,15 @@ impl App {
                     year: Some(year),
                 };
 
-                self.provider_modal = Some(ProviderSelectModalState {
+                let mut p_modal = ProviderSelectModalState::new(
                     target_title,
                     request,
-                    poster_path: poster,
-                    options: default_provider_options(),
-                    selected_idx: 0,
-                });
+                    poster,
+                    &self.cfg.preferred_provider,
+                    &self.cfg.sub_language,
+                );
+                p_modal.update_dependent_tracks(&self.cfg.sub_language);
+                self.provider_modal = Some(p_modal);
                 return;
             }
         }
@@ -1206,13 +1583,15 @@ impl App {
                     title: item.title.clone(),
                     year: Some(item.year.clone()),
                 };
-                self.provider_modal = Some(ProviderSelectModalState {
+                let mut p_modal = ProviderSelectModalState::new(
                     target_title,
                     request,
-                    poster_path: item.poster_path,
-                    options: default_provider_options(),
-                    selected_idx: 0,
-                });
+                    item.poster_path,
+                    &self.cfg.preferred_provider,
+                    &self.cfg.sub_language,
+                );
+                p_modal.update_dependent_tracks(&self.cfg.sub_language);
+                self.provider_modal = Some(p_modal);
             } else {
                 let target_title = format!("{} ({})", item.title, item.year);
                 let request = MediaRequest {
@@ -1223,71 +1602,611 @@ impl App {
                     title: item.title.clone(),
                     year: Some(item.year.clone()),
                 };
-                self.provider_modal = Some(ProviderSelectModalState {
+                let mut p_modal = ProviderSelectModalState::new(
                     target_title,
                     request,
-                    poster_path: item.poster_path,
-                    options: default_provider_options(),
-                    selected_idx: 0,
-                });
+                    item.poster_path,
+                    &self.cfg.preferred_provider,
+                    &self.cfg.sub_language,
+                );
+                p_modal.update_dependent_tracks(&self.cfg.sub_language);
+                self.provider_modal = Some(p_modal);
             }
         }
     }
 
     pub fn provider_modal_next(&mut self) {
         if let Some(ref mut m) = self.provider_modal {
-            if m.selected_idx + 1 < m.options.len() {
-                m.selected_idx += 1;
-            } else {
-                m.selected_idx = 0;
+            match m.active_pane {
+                ProviderModalPane::Categories => {
+                    m.active_category = match m.active_category {
+                        ProviderModalCategory::Provider => ProviderModalCategory::Quality,
+                        ProviderModalCategory::Quality => ProviderModalCategory::Subtitles,
+                        ProviderModalCategory::Subtitles => ProviderModalCategory::Provider,
+                    };
+                }
+                ProviderModalPane::Content => match m.active_category {
+                    ProviderModalCategory::Provider => {
+                        if !m.options.is_empty() {
+                            m.selected_idx = (m.selected_idx + 1) % m.options.len();
+                            m.update_dependent_tracks(&self.cfg.sub_language);
+                        }
+                    }
+                    ProviderModalCategory::Quality => {
+                        if !m.qualities.is_empty() {
+                            m.selected_quality_idx =
+                                (m.selected_quality_idx + 1) % m.qualities.len();
+                        }
+                    }
+                    ProviderModalCategory::Subtitles => {
+                        if !m.subtitles.is_empty() {
+                            m.selected_subtitle_idx =
+                                (m.selected_subtitle_idx + 1) % m.subtitles.len();
+                        }
+                    }
+                },
             }
         }
     }
 
     pub fn provider_modal_prev(&mut self) {
         if let Some(ref mut m) = self.provider_modal {
-            if m.selected_idx > 0 {
-                m.selected_idx -= 1;
-            } else {
-                m.selected_idx = m.options.len().saturating_sub(1);
+            match m.active_pane {
+                ProviderModalPane::Categories => {
+                    m.active_category = match m.active_category {
+                        ProviderModalCategory::Provider => ProviderModalCategory::Subtitles,
+                        ProviderModalCategory::Quality => ProviderModalCategory::Provider,
+                        ProviderModalCategory::Subtitles => ProviderModalCategory::Quality,
+                    };
+                }
+                ProviderModalPane::Content => match m.active_category {
+                    ProviderModalCategory::Provider => {
+                        if !m.options.is_empty() {
+                            m.selected_idx =
+                                (m.selected_idx + m.options.len() - 1) % m.options.len();
+                            m.update_dependent_tracks(&self.cfg.sub_language);
+                        }
+                    }
+                    ProviderModalCategory::Quality => {
+                        if !m.qualities.is_empty() {
+                            m.selected_quality_idx = (m.selected_quality_idx + m.qualities.len()
+                                - 1)
+                                % m.qualities.len();
+                        }
+                    }
+                    ProviderModalCategory::Subtitles => {
+                        if !m.subtitles.is_empty() {
+                            m.selected_subtitle_idx = (m.selected_subtitle_idx + m.subtitles.len()
+                                - 1)
+                                % m.subtitles.len();
+                        }
+                    }
+                },
             }
         }
     }
 
+    pub fn provider_modal_switch_pane(&mut self) {
+        if let Some(ref mut m) = self.provider_modal {
+            m.active_pane = match m.active_pane {
+                ProviderModalPane::Categories => ProviderModalPane::Content,
+                ProviderModalPane::Content => ProviderModalPane::Categories,
+            };
+        }
+    }
+
+    pub fn provider_modal_left(&mut self) {
+        if let Some(ref mut m) = self.provider_modal {
+            m.active_pane = ProviderModalPane::Categories;
+        }
+    }
+
+    pub fn provider_modal_right(&mut self) {
+        if let Some(ref mut m) = self.provider_modal {
+            m.active_pane = ProviderModalPane::Content;
+        }
+    }
+
+    pub fn provider_modal_set_category(&mut self, cat: ProviderModalCategory) {
+        if let Some(ref mut m) = self.provider_modal {
+            m.active_category = cat;
+            m.active_pane = ProviderModalPane::Content;
+        }
+    }
+
     pub async fn provider_modal_confirm(&mut self) {
+        if let Some(ref mut m) = self.provider_modal {
+            if m.active_pane == ProviderModalPane::Categories {
+                m.active_pane = ProviderModalPane::Content;
+                return;
+            }
+        }
+
         if let Some(modal) = self.provider_modal.take() {
             let choice = modal
                 .options
                 .get(modal.selected_idx)
                 .map(|o| o.id.clone())
                 .unwrap_or_else(|| "auto".to_string());
+            let quality_choice = modal
+                .qualities
+                .get(modal.selected_quality_idx)
+                .map(|q| q.label.clone());
+            let sub_choice = modal.subtitles.get(modal.selected_subtitle_idx).cloned();
             let req = modal.request;
             let poster = modal.poster_path;
 
-            if req.media_type == "tv" {
-                let season = req.season.unwrap_or(1);
-                let episode = req.episode.unwrap_or(1);
-                self.play_tv_series_with_provider(
-                    req.tmdb_id,
-                    &req.title,
-                    req.year.as_deref().unwrap_or(""),
-                    &poster,
-                    season,
-                    episode,
-                    &choice,
-                )
+            self.start_playback_loading(req, poster, choice, quality_choice, sub_choice, None)
                 .await;
+        }
+    }
+
+    pub async fn start_playback_loading(
+        &mut self,
+        req: MediaRequest,
+        poster_path: String,
+        provider_choice: String,
+        _quality_choice: Option<String>,
+        subtitle_choice: Option<SubtitleTrackOption>,
+        catalog_item: Option<MediaItem>,
+    ) {
+        if let Some(h) = self.loading_task.take() {
+            h.abort();
+        }
+
+        let is_tv = req.media_type == "tv";
+        let display_title = if is_tv {
+            format!(
+                "{} S{:02}E{:02}",
+                req.title,
+                req.season.unwrap_or(1),
+                req.episode.unwrap_or(1)
+            )
+        } else {
+            req.title.clone()
+        };
+
+        let subtitle_str = if is_tv {
+            format!(
+                "Season {}, Episode {}",
+                req.season.unwrap_or(1),
+                req.episode.unwrap_or(1)
+            )
+        } else {
+            req.year.clone().unwrap_or_else(|| "Movie".to_string())
+        };
+
+        let provider_display_name = match provider_choice.to_lowercase().as_str() {
+            "vixsrc" => "VixSrc Server",
+            "lookmovie" => "LookMovie Server",
+            _ => "Auto Fallback Engine",
+        }
+        .to_string();
+
+        let initial_steps = vec![
+            StepProgressItem {
+                step: LoadingStep::ResolvingMetadata,
+                status: StepStatus::Active,
+                title: "Resolving",
+                detail: "Canonical streams & episode maps".to_string(),
+            },
+            StepProgressItem {
+                step: LoadingStep::ConnectingProvider,
+                status: StepStatus::Pending,
+                title: "Providers",
+                detail: format!("Connecting to media network ({})", provider_display_name),
+            },
+            StepProgressItem {
+                step: LoadingStep::FetchingSubtitles,
+                status: StepStatus::Pending,
+                title: "Subtitles",
+                detail: "Analyzing audio & subtitle inventory".to_string(),
+            },
+            StepProgressItem {
+                step: LoadingStep::LaunchingPlayer,
+                status: StepStatus::Pending,
+                title: "Player",
+                detail: "Buffering stream in mpv hardware decoder".to_string(),
+            },
+        ];
+
+        let (year, genre, score, episodes_count, synopsis) = if let Some(ref item) = catalog_item {
+            (
+                item.year.clone(),
+                item.genres.clone(),
+                item.rating,
+                item.episodes_count,
+                item.overview.clone(),
+            )
+        } else {
+            (
+                req.year.clone().unwrap_or_else(|| "2024".to_string()),
+                "Animation, Sci-Fi, Drama".to_string(),
+                8.2,
+                None,
+                String::new(),
+            )
+        };
+
+        let up_next = if is_tv {
+            Some(format!(
+                "S{:02}E{:02} • Up Next",
+                req.season.unwrap_or(1),
+                req.episode.unwrap_or(1) + 1
+            ))
+        } else {
+            None
+        };
+
+        self.playback_loading = Some(PlaybackLoadingState {
+            title: display_title.clone(),
+            subtitle: subtitle_str,
+            media_type: if is_tv { "tv" } else { "movie" }.to_string(),
+            provider_name: provider_display_name,
+            current_step: LoadingStep::ResolvingMetadata,
+            steps: initial_steps,
+            session_autoskip: true,
+            session_autoplay: self.cfg.auto_play_next,
+            session_audio_mode: self.cfg.audio_mode.clone(),
+            poster_text: self.current_poster_text.clone(),
+            year,
+            genre,
+            score,
+            episodes_count,
+            studio: "Studio / Network".to_string(),
+            synopsis,
+            up_next,
+            spinner_idx: 0,
+            request: req.clone(),
+            poster_path: poster_path.clone(),
+        });
+
+        let (tx, rx) = mpsc::unbounded_channel();
+        self.loading_rx = Some(rx);
+
+        let tmdb = self.tmdb.clone();
+        let providers = self.providers.clone();
+        let subtitles_mgr = self.subtitles.clone();
+        let cfg = self.cfg.clone();
+        let db = self.db.clone();
+        let disp_title_clone = display_title.clone();
+        let req_clone = req.clone();
+        let poster_clone = poster_path.clone();
+
+        let handle = tokio::spawn(async move {
+            // STEP 1: Metadata Resolution & Episode mapping
+            let mut mapped_req = req_clone.clone();
+            if mapped_req.media_type == "tv" {
+                if let (Some(s), Some(e)) = (mapped_req.season, mapped_req.episode) {
+                    if provider_choice == "vixsrc" || provider_choice == "auto" {
+                        if let Ok((_info, _seasons, Some(stream_map))) = tmdb
+                            .get_tv_details_with_order(mapped_req.tmdb_id, "streaming")
+                            .await
+                        {
+                            if let Ok(canon_eps) =
+                                tmdb.get_season_episodes(mapped_req.tmdb_id, s).await
+                            {
+                                if let Some(target_canon_ep) =
+                                    canon_eps.iter().find(|x| x.episode_number == e)
+                                {
+                                    let target_name = target_canon_ep.name.trim().to_lowercase();
+                                    let mut found = None;
+                                    for (stream_s, eps) in &stream_map {
+                                        for stream_ep in eps {
+                                            if stream_ep.name.trim().to_lowercase() == target_name {
+                                                found = Some((*stream_s, stream_ep.episode_number));
+                                                break;
+                                            }
+                                        }
+                                        if found.is_some() {
+                                            break;
+                                        }
+                                    }
+                                    if let Some((s_m, e_m)) = found {
+                                        mapped_req.season = Some(s_m);
+                                        mapped_req.episode = Some(e_m);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            let _ = tx.send(LoadingProgress::StepUpdate {
+                step: LoadingStep::ResolvingMetadata,
+                status: StepStatus::Completed,
+                detail: format!("Found canonical title index for '{}'", disp_title_clone),
+            });
+
+            // STEP 2: Connecting Provider
+            let active_provider = provider_choice.clone();
+            let prov_label = match active_provider.as_str() {
+                "vixsrc" => "VixSrc Server",
+                "lookmovie" => "LookMovie Server",
+                _ => "Auto Fallback Engine",
+            };
+            let _ = tx.send(LoadingProgress::StepUpdate {
+                step: LoadingStep::ConnectingProvider,
+                status: StepStatus::Active,
+                detail: format!("Connecting to {} CDN...", prov_label),
+            });
+
+            let resolve_result = providers
+                .resolve_with_choice(&active_provider, &mapped_req)
+                .await;
+            let mut stream = match resolve_result {
+                Ok(s) => s,
+                Err(err_primary) => {
+                    if active_provider == "vixsrc" || active_provider == "auto" {
+                        let _ = tx.send(LoadingProgress::FallbackNotice {
+                            new_provider: "LookMovie (Fallback CDN)".to_string(),
+                        });
+                        let _ = tx.send(LoadingProgress::StepUpdate {
+                            step: LoadingStep::ConnectingProvider,
+                            status: StepStatus::Active,
+                            detail: format!("{} failed; failing over to LookMovie...", prov_label),
+                        });
+                        match providers.resolve_with_choice("lookmovie", &req_clone).await {
+                            Ok(s) => s,
+                            Err(err_fallback) => {
+                                let _ = tx.send(LoadingProgress::StepUpdate {
+                                    step: LoadingStep::ConnectingProvider,
+                                    status: StepStatus::Failed,
+                                    detail: format!("Both providers failed: {}", err_fallback),
+                                });
+                                let _ = tx.send(LoadingProgress::Failed(format!(
+                                    "Primary ({}) and Fallback (LookMovie) failed: {}",
+                                    err_primary, err_fallback
+                                )));
+                                return;
+                            }
+                        }
+                    } else {
+                        let _ = tx.send(LoadingProgress::StepUpdate {
+                            step: LoadingStep::ConnectingProvider,
+                            status: StepStatus::Failed,
+                            detail: format!("Provider connection failed: {}", err_primary),
+                        });
+                        let _ = tx.send(LoadingProgress::Failed(format!(
+                            "Provider error: {}",
+                            err_primary
+                        )));
+                        return;
+                    }
+                }
+            };
+
+            let _ = tx.send(LoadingProgress::StepUpdate {
+                step: LoadingStep::ConnectingProvider,
+                status: StepStatus::Completed,
+                detail: format!("CDN Stream live: {}", stream.provider_name),
+            });
+
+            // STEP 3: Subtitles resolution
+            let _ = tx.send(LoadingProgress::StepUpdate {
+                step: LoadingStep::FetchingSubtitles,
+                status: StepStatus::Active,
+                detail: "Analyzing subtitle inventory...".to_string(),
+            });
+
+            let pref_sub_lang = cfg.sub_language.clone();
+            if let Some(ref sub_opt) = subtitle_choice {
+                if sub_opt.lang_code == "off" {
+                    stream.subtitles.clear();
+                    let _ = tx.send(LoadingProgress::StepUpdate {
+                        step: LoadingStep::FetchingSubtitles,
+                        status: StepStatus::Completed,
+                        detail: "Subtitles disabled".to_string(),
+                    });
+                } else if sub_opt.is_native && !stream.subtitles.is_empty() {
+                    let _ = tx.send(LoadingProgress::StepUpdate {
+                        step: LoadingStep::FetchingSubtitles,
+                        status: StepStatus::Completed,
+                        detail: format!(
+                            "Selected {} pre-synced provider native tracks (.vtt)",
+                            stream.subtitles.len()
+                        ),
+                    });
+                } else {
+                    let _ = tx.send(LoadingProgress::StepUpdate {
+                        step: LoadingStep::FetchingSubtitles,
+                        status: StepStatus::Active,
+                        detail: format!(
+                            "Fetching OpenSubtitles cloud track [{}]...",
+                            sub_opt.lang_code
+                        ),
+                    });
+                    let ext = subtitles_mgr
+                        .prepare_subtitles(
+                            &tmdb,
+                            req_clone.tmdb_id,
+                            &req_clone.title,
+                            &req_clone.media_type,
+                            req_clone.season,
+                            req_clone.episode,
+                            &sub_opt.lang_code,
+                        )
+                        .await;
+                    if !ext.is_empty() {
+                        stream.subtitles = ext;
+                        let _ = tx.send(LoadingProgress::StepUpdate {
+                            step: LoadingStep::FetchingSubtitles,
+                            status: StepStatus::Completed,
+                            detail: format!(
+                                "Loaded OpenSubtitles.org cloud tracks [{}]",
+                                sub_opt.lang_code
+                            ),
+                        });
+                    } else if !stream.subtitles.is_empty() {
+                        let _ = tx.send(LoadingProgress::StepUpdate {
+                            step: LoadingStep::FetchingSubtitles,
+                            status: StepStatus::Completed,
+                            detail: "Cloud track not found; using provider native track"
+                                .to_string(),
+                        });
+                    } else {
+                        let _ = tx.send(LoadingProgress::StepUpdate {
+                            step: LoadingStep::FetchingSubtitles,
+                            status: StepStatus::Completed,
+                            detail: "No subtitles found for requested language".to_string(),
+                        });
+                    }
+                }
             } else {
-                self.play_movie_with_provider(
-                    req.tmdb_id,
-                    &req.title,
-                    req.year.as_deref().unwrap_or(""),
-                    &poster,
-                    &choice,
-                )
-                .await;
+                // Automatic: if stream has native subtitles (LookMovie .vtt), use them;
+                // if it doesn't (VixSrc), automatically query OpenSubtitles!
+                if !stream.subtitles.is_empty() {
+                    let _ = tx.send(LoadingProgress::StepUpdate {
+                        step: LoadingStep::FetchingSubtitles,
+                        status: StepStatus::Completed,
+                        detail: format!(
+                            "Auto-selected {} pre-synced native tracks (.vtt)",
+                            stream.subtitles.len()
+                        ),
+                    });
+                } else {
+                    let _ = tx.send(LoadingProgress::StepUpdate {
+                        step: LoadingStep::FetchingSubtitles,
+                        status: StepStatus::Active,
+                        detail: format!(
+                            "Stream has no native subtitles; auto-fetching OpenSubtitles [{}]...",
+                            pref_sub_lang
+                        ),
+                    });
+                    let ext = subtitles_mgr
+                        .prepare_subtitles(
+                            &tmdb,
+                            req_clone.tmdb_id,
+                            &req_clone.title,
+                            &req_clone.media_type,
+                            req_clone.season,
+                            req_clone.episode,
+                            &pref_sub_lang,
+                        )
+                        .await;
+                    if !ext.is_empty() {
+                        stream.subtitles = ext;
+                        let _ = tx.send(LoadingProgress::StepUpdate {
+                            step: LoadingStep::FetchingSubtitles,
+                            status: StepStatus::Completed,
+                            detail: format!(
+                                "Auto-loaded OpenSubtitles.org cloud tracks [{}]",
+                                pref_sub_lang
+                            ),
+                        });
+                    } else {
+                        let _ = tx.send(LoadingProgress::StepUpdate {
+                            step: LoadingStep::FetchingSubtitles,
+                            status: StepStatus::Completed,
+                            detail: "No subtitles available for this stream".to_string(),
+                        });
+                    }
+                }
+            }
+
+            // STEP 4: Launching player
+            let _ = tx.send(LoadingProgress::StepUpdate {
+                step: LoadingStep::LaunchingPlayer,
+                status: StepStatus::Active,
+                detail: "Starting MPV hardware-accelerated pipeline...".to_string(),
+            });
+
+            let _ = db.record_watch(
+                req_clone.tmdb_id,
+                &req_clone.media_type,
+                &req_clone.title,
+                req_clone.year.as_deref().unwrap_or(""),
+                &poster_clone,
+                req_clone.season,
+                req_clone.episode,
+                None,
+                0,
+                0,
+            );
+
+            let _ = tx.send(LoadingProgress::Ready {
+                stream: Box::new(stream),
+                display_title: disp_title_clone,
+            });
+        });
+
+        self.loading_task = Some(handle);
+    }
+
+    pub fn poll_playback_loading(&mut self) -> Option<LoadingProgress> {
+        if let Some(ref mut st) = self.playback_loading {
+            st.spinner_idx = st.spinner_idx.wrapping_add(1);
+        }
+
+        if let Some(ref mut rx) = self.loading_rx {
+            let mut ready_or_failed = None;
+            while let Ok(msg) = rx.try_recv() {
+                match msg {
+                    LoadingProgress::StepUpdate {
+                        step,
+                        status,
+                        ref detail,
+                    } => {
+                        if let Some(ref mut st) = self.playback_loading {
+                            st.current_step = step;
+                            for s in &mut st.steps {
+                                if s.step == step {
+                                    s.status = status;
+                                    s.detail = detail.clone();
+                                }
+                            }
+                        }
+                    }
+                    LoadingProgress::FallbackNotice { ref new_provider } => {
+                        if let Some(ref mut st) = self.playback_loading {
+                            st.provider_name = new_provider.clone();
+                        }
+                    }
+                    LoadingProgress::Ready { .. } | LoadingProgress::Failed(_) => {
+                        ready_or_failed = Some(msg);
+                        break;
+                    }
+                }
+            }
+            if ready_or_failed.is_some() {
+                self.loading_rx = None;
+                return ready_or_failed;
             }
         }
+        None
+    }
+
+    pub fn cancel_playback_loading(&mut self) {
+        if let Some(h) = self.loading_task.take() {
+            h.abort();
+        }
+        self.loading_rx = None;
+        self.playback_loading = None;
+        self.status_message = "Playback cancelled".to_string();
+    }
+
+    pub async fn force_playback_fallback(&mut self) {
+        if let Some(st) = self.playback_loading.take() {
+            if let Some(h) = self.loading_task.take() {
+                h.abort();
+            }
+            self.loading_rx = None;
+            self.start_playback_loading(
+                st.request,
+                st.poster_path,
+                "lookmovie".to_string(),
+                None,
+                None,
+                None,
+            )
+            .await;
+        }
+    }
+
+    pub async fn execute_player(&mut self, stream: &StreamCandidate, title: &str) {
+        self.playback_loading = None;
+        self.launch_mpv_session(stream, title).await;
     }
 
     pub async fn open_subtitle_modal(&mut self) {
@@ -2088,5 +3007,122 @@ mod tests {
             .unwrap()
             .feedback_message
             .is_some());
+    }
+
+    #[test]
+    fn test_provider_modal_state_navigation_and_dependent_tracks() {
+        let req = MediaRequest {
+            tmdb_id: 12345,
+            media_type: "movie".to_string(),
+            season: None,
+            episode: None,
+            title: "Test Movie".to_string(),
+            year: Some("2024".to_string()),
+        };
+
+        let mut modal = ProviderSelectModalState::new(
+            "Test Movie (2024)".to_string(),
+            req,
+            "/test.jpg".to_string(),
+            "auto",
+            "eng",
+        );
+
+        assert_eq!(modal.active_category, ProviderModalCategory::Provider);
+        assert_eq!(modal.active_pane, ProviderModalPane::Categories);
+
+        // Switch to lookmovie
+        let look_idx = modal
+            .options
+            .iter()
+            .position(|o| o.id == "lookmovie")
+            .expect("lookmovie should be an option");
+        modal.selected_idx = look_idx;
+        modal.update_dependent_tracks("eng");
+
+        // Verify qualities for LookMovie
+        assert!(modal.qualities.iter().any(|q| q.label.contains("1080p")));
+        // Verify native subtitles are present for LookMovie
+        assert!(modal
+            .subtitles
+            .iter()
+            .any(|s| s.is_native && s.badge == "NATIVE"));
+
+        // Switch to vixsrc
+        let vix_idx = modal
+            .options
+            .iter()
+            .position(|o| o.id == "vixsrc")
+            .expect("vixsrc should be an option");
+        modal.selected_idx = vix_idx;
+        modal.update_dependent_tracks("eng");
+
+        // Verify VixSrc subtitles use OpenSubtitles Cloud tracks
+        assert!(modal
+            .subtitles
+            .iter()
+            .any(|s| !s.is_native && s.badge == "CLOUD"));
+    }
+
+    #[test]
+    fn test_playback_loading_state_stepper_and_poll() {
+        let cfg = Config::default();
+        let db = Database::in_memory().unwrap();
+        let mut app = App::new(cfg, db);
+
+        let req = MediaRequest {
+            tmdb_id: 9999,
+            media_type: "movie".to_string(),
+            season: None,
+            episode: None,
+            title: "Cinematic Demo".to_string(),
+            year: Some("2024".to_string()),
+        };
+
+        let initial_steps = vec![
+            StepProgressItem {
+                step: LoadingStep::ResolvingMetadata,
+                status: StepStatus::Active,
+                title: "Resolving",
+                detail: "Canonical streams".to_string(),
+            },
+            StepProgressItem {
+                step: LoadingStep::ConnectingProvider,
+                status: StepStatus::Pending,
+                title: "Providers",
+                detail: "Connecting".to_string(),
+            },
+        ];
+
+        app.playback_loading = Some(PlaybackLoadingState {
+            title: "Cinematic Demo".to_string(),
+            subtitle: "2024".to_string(),
+            media_type: "movie".to_string(),
+            provider_name: "Auto Fallback".to_string(),
+            current_step: LoadingStep::ResolvingMetadata,
+            steps: initial_steps,
+            session_autoskip: true,
+            session_autoplay: true,
+            session_audio_mode: "dub".to_string(),
+            poster_text: None,
+            year: "2024".to_string(),
+            genre: "Sci-Fi".to_string(),
+            score: 9.0,
+            episodes_count: None,
+            studio: "Studio".to_string(),
+            synopsis: "Demo".to_string(),
+            up_next: None,
+            spinner_idx: 0,
+            request: req,
+            poster_path: String::new(),
+        });
+
+        assert_eq!(app.playback_loading.as_ref().unwrap().spinner_idx, 0);
+        let _ = app.poll_playback_loading();
+        assert_eq!(app.playback_loading.as_ref().unwrap().spinner_idx, 1);
+
+        app.cancel_playback_loading();
+        assert!(app.playback_loading.is_none());
+        assert_eq!(app.status_message, "Playback cancelled");
     }
 }

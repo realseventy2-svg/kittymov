@@ -139,6 +139,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut tick_interval = tokio::time::interval(Duration::from_millis(33)); // ~30 FPS
 
     while !app.should_quit {
+        // Poll playback loading progress
+        if app.playback_loading.is_some() {
+            if let Some(event) = app.poll_playback_loading() {
+                match event {
+                    app::LoadingProgress::Ready {
+                        stream,
+                        display_title,
+                    } => {
+                        app.execute_player(&stream, &display_title).await;
+                    }
+                    app::LoadingProgress::Failed(err) => {
+                        app.playback_loading = None;
+                        app.status_message = format!("Playback error: {}", err);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         terminal.draw(|f| ui::render_ui(f, &app))?;
 
         tokio::select! {
@@ -169,6 +188,20 @@ async fn handle_key_event(
     code: KeyCode,
     _modifiers: crossterm::event::KeyModifiers,
 ) {
+    // -1. If Playback Loading / Bootstrap screen is active
+    if app.playback_loading.is_some() {
+        match code {
+            KeyCode::Esc | KeyCode::Char('q') => {
+                app.cancel_playback_loading();
+            }
+            KeyCode::Char('F') | KeyCode::Char('f') => {
+                app.force_playback_fallback().await;
+            }
+            _ => {}
+        }
+        return;
+    }
+
     // 0. If Help modal is active
     if app.show_help {
         match code {
@@ -351,8 +384,8 @@ async fn handle_key_event(
         return;
     }
 
-    // 3. If Provider / Server selector modal is open
-    if let Some(ref mut p_modal) = app.provider_modal {
+    // 3. If Provider / Tracks selector modal is open
+    if app.provider_modal.is_some() {
         match code {
             KeyCode::Esc => {
                 app.provider_modal = None;
@@ -360,8 +393,14 @@ async fn handle_key_event(
             KeyCode::Char('?') | KeyCode::F(1) => {
                 app.toggle_help();
             }
-            KeyCode::Char('t') => {
-                app.open_subtitle_modal().await;
+            KeyCode::Tab => {
+                app.provider_modal_switch_pane();
+            }
+            KeyCode::Left | KeyCode::Char('h') => {
+                app.provider_modal_left();
+            }
+            KeyCode::Right | KeyCode::Char('l') => {
+                app.provider_modal_right();
             }
             KeyCode::Up | KeyCode::Char('k') => {
                 app.provider_modal_prev();
@@ -370,20 +409,13 @@ async fn handle_key_event(
                 app.provider_modal_next();
             }
             KeyCode::Char('1') => {
-                p_modal.selected_idx = 0;
-                app.provider_modal_confirm().await;
+                app.provider_modal_set_category(crate::app::ProviderModalCategory::Provider);
             }
             KeyCode::Char('2') => {
-                if p_modal.options.len() > 1 {
-                    p_modal.selected_idx = 1;
-                }
-                app.provider_modal_confirm().await;
+                app.provider_modal_set_category(crate::app::ProviderModalCategory::Quality);
             }
             KeyCode::Char('3') => {
-                if p_modal.options.len() > 2 {
-                    p_modal.selected_idx = 2;
-                }
-                app.provider_modal_confirm().await;
+                app.provider_modal_set_category(crate::app::ProviderModalCategory::Subtitles);
             }
             KeyCode::Char('d') => {
                 app.toggle_audio_mode();

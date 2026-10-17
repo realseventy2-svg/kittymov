@@ -2,6 +2,7 @@ pub mod banner;
 pub mod catalog_list;
 pub mod episode_modal;
 pub mod help_modal;
+pub mod loading_screen;
 pub mod metadata_panel;
 pub mod poster;
 pub mod provider_modal;
@@ -16,6 +17,7 @@ use ratatui::Frame;
 
 use self::catalog_list::render_catalog_panel;
 use self::episode_modal::render_episode_modal;
+use self::loading_screen::render_loading_screen;
 use self::metadata_panel::render_metadata_panel;
 use self::provider_modal::render_provider_modal;
 use self::settings_modal::render_settings_modal;
@@ -25,6 +27,12 @@ use crate::app::App;
 
 pub fn render_ui(f: &mut Frame, app: &App) {
     let size = f.area();
+
+    // 0. If Playback Loading / Bootstrap Screen is active, render full-screen cinematic loader (Kunai style)!
+    if let Some(ref loading_state) = app.playback_loading {
+        render_loading_screen(f, size, loading_state);
+        return;
+    }
 
     // Outer frame with glowing cyber-cyan double borders
     let outer_block = Block::default()
@@ -100,16 +108,9 @@ pub fn render_ui(f: &mut Frame, app: &App) {
         );
     }
 
-    // If Provider / Server selector modal is active, overlay it
+    // If Provider / Tracks selector modal is active, overlay it
     if let Some(ref p_modal) = app.provider_modal {
-        render_provider_modal(
-            f,
-            size,
-            &p_modal.target_title,
-            &app.cfg.audio_mode,
-            &p_modal.options,
-            p_modal.selected_idx,
-        );
+        render_provider_modal(f, size, p_modal);
     }
 
     // If Subtitle selector modal is active, overlay it
