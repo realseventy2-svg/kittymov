@@ -16,12 +16,15 @@ pub fn render_metadata_panel(
     current_index: usize,
     total_items: usize,
 ) {
+    let (_, poster_h) =
+        crate::ui::poster::calculate_poster_dimensions_for_panel(area.width, area.height);
+    let poster_frame_height = poster_h + 2;
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(14), // Poster frame
-            Constraint::Length(3),  // Title
-            Constraint::Min(10),    // Metadata table
+            Constraint::Length(poster_frame_height), // Poster frame
+            Constraint::Length(3),                  // Title
+            Constraint::Min(8),                     // Metadata table
         ])
         .split(area);
 

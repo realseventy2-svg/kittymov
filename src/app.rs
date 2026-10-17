@@ -8,7 +8,7 @@ use crate::metadata::{MediaItem, TmdbClient, TvEpisode, TvSeason};
 use crate::player::{MpvController, PlaybackStatus};
 use crate::providers::{MediaRequest, ProviderManager, StreamCandidate};
 use crate::storage::Database;
-use crate::ui::poster::render_poster_to_text;
+use crate::ui::poster::{calculate_poster_dimensions_for_panel, render_poster_to_text};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActiveTab {
@@ -817,9 +817,10 @@ pub fn get_all_settings_metadata(cfg: &Config) -> Vec<SettingMatch> {
             label: "Poster Art Render Mode",
             value_str: match cfg.poster_render_mode.as_str() {
                 "off" => "Off (Text-Only Mode)".to_string(),
-                _ => "Half-Block 24-bit ANSI (High Quality)".to_string(),
+                "half-block" => "Half-Block Universal (▀▄ 24-bit ANSI)".to_string(),
+                _ => "High-Resolution TrueColor (Sextant & Quad Subpixels)".to_string(),
             },
-            description: "Render high-resolution colored poster previews using Unicode half-blocks or text-only fallback.",
+            description: "Render high-resolution colored poster previews using Unicode sextants/quads, half-blocks, or text-only fallback.",
         },
         SettingMatch {
             category: SettingsCategory::Appearance,
@@ -1215,7 +1216,13 @@ impl App {
         if let Some(item) = self.current_items.get(self.selected_index) {
             if !item.poster_path.is_empty() {
                 if let Some(path) = self.tmdb.get_cached_poster(&item.poster_path).await {
-                    self.current_poster_text = render_poster_to_text(&path, 24, 12);
+                    let (term_w, term_h) = crossterm::terminal::size().unwrap_or((120, 40));
+                    let inner_w = term_w.saturating_sub(2);
+                    let inner_h = term_h.saturating_sub(2);
+                    let panel_w = (inner_w as f32 * 0.38) as u16;
+                    let (w, h) = calculate_poster_dimensions_for_panel(panel_w, inner_h);
+                    self.current_poster_text =
+                        render_poster_to_text(&path, w, h, &self.cfg.poster_render_mode);
                     return;
                 }
             }
@@ -1628,7 +1635,7 @@ impl App {
                         self.cfg.theme_name = cycle_list(&themes, &self.cfg.theme_name, forward);
                     }
                     1 => {
-                        let modes = ["half-block", "off"];
+                        let modes = ["high-res", "half-block", "off"];
                         self.cfg.poster_render_mode =
                             cycle_list(&modes, &self.cfg.poster_render_mode, forward);
                     }
@@ -1747,7 +1754,7 @@ impl App {
                 }
                 SettingsCategory::Appearance => {
                     self.cfg.theme_name = "cyber".to_string();
-                    self.cfg.poster_render_mode = "half-block".to_string();
+                    self.cfg.poster_render_mode = "high-res".to_string();
                 }
                 SettingsCategory::Storage => {
                     s.confirmation = Some(SettingsConfirmation::ResetDefaults);
@@ -1875,7 +1882,7 @@ impl App {
                     self.cfg.theme_name = cycle_list(&themes, &self.cfg.theme_name, forward);
                 }
                 1 => {
-                    let modes = ["half-block", "kitty", "sixel", "off"];
+                    let modes = ["high-res", "half-block", "off"];
                     self.cfg.poster_render_mode =
                         cycle_list(&modes, &self.cfg.poster_render_mode, forward);
                 }

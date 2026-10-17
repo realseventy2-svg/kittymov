@@ -172,10 +172,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tokio::select! {
             _ = tick_interval.tick() => {}
             Some(Ok(event)) = reader.next() => {
-                if let Event::Key(key) = event {
-                    if key.kind == KeyEventKind::Press {
-                        handle_key_event(&mut app, key.code, key.modifiers).await;
+                match event {
+                    Event::Key(key) => {
+                        if key.kind == KeyEventKind::Press {
+                            handle_key_event(&mut app, key.code, key.modifiers).await;
+                        }
                     }
+                    Event::Resize(_, _) => {
+                        app.update_poster().await;
+                    }
+                    _ => {}
                 }
             }
             _ = tokio::signal::ctrl_c() => {
@@ -241,6 +247,9 @@ async fn handle_key_event(
             }
             KeyCode::Enter | KeyCode::Char(' ') => {
                 app.setup_wizard_confirm();
+                if app.setup_wizard.is_none() {
+                    app.update_poster().await;
+                }
             }
             _ => {}
         }
@@ -340,11 +349,13 @@ async fn handle_key_event(
                         sm.active_pane = crate::app::SettingsPane::Categories;
                     } else {
                         app.toggle_settings();
+                        app.update_poster().await;
                     }
                 }
             }
             KeyCode::Char('S') => {
                 app.toggle_settings();
+                app.update_poster().await;
             }
             KeyCode::Tab | KeyCode::BackTab => {
                 app.settings_switch_pane();

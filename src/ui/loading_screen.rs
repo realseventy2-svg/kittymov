@@ -217,14 +217,21 @@ pub fn render_loading_screen(f: &mut Frame, area: Rect, state: &PlaybackLoadingS
     let right_inner = right_border.inner(cols[1]);
     f.render_widget(right_border, cols[1]);
 
+    let poster_len = if let Some(ref text) = state.poster_text {
+        (text.lines.len() as u16)
+            .min(right_inner.height.saturating_sub(16))
+            .max(10)
+    } else {
+        12
+    };
     let right_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(12), // Poster frame
-            Constraint::Length(3),  // Title + episode info
-            Constraint::Length(5),  // — details —
-            Constraint::Min(4),     // — synopsis —
-            Constraint::Length(4),  // — up next —
+            Constraint::Length(poster_len), // Responsive poster frame
+            Constraint::Length(3),          // Title + episode info
+            Constraint::Length(5),          // — details —
+            Constraint::Min(4),             // — synopsis —
+            Constraint::Length(4),          // — up next —
         ])
         .margin(1)
         .split(right_inner);

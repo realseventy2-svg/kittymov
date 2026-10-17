@@ -61,7 +61,7 @@ fn default_theme_name() -> String {
 }
 
 fn default_poster_render_mode() -> String {
-    "half-block".to_string()
+    "high-res".to_string()
 }
 
 impl Config {
@@ -280,7 +280,7 @@ mod tests {
         assert!(!cfg.resume_on_startup);
         assert!(cfg.subtitle_augmentation);
         assert_eq!(cfg.theme_name, "cyber");
-        assert_eq!(cfg.poster_render_mode, "half-block");
+        assert_eq!(cfg.poster_render_mode, "high-res");
     }
 
     #[test]
