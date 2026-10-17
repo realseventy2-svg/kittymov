@@ -109,15 +109,12 @@ impl LookMovieProvider {
         // 3. Fallback to first available slug
         items.iter().find_map(|item| item.slug.clone())
     }
-}
 
-#[async_trait]
-impl Provider for LookMovieProvider {
-    fn name(&self) -> &'static str {
-        "LookMovie (Fallback CDN)"
-    }
-
-    async fn resolve(&self, req: &MediaRequest) -> Result<StreamCandidate, String> {
+    pub async fn resolve_with_quality(
+        &self,
+        req: &MediaRequest,
+        quality: Option<&str>,
+    ) -> Result<StreamCandidate, String> {
         let base_url = "https://www.lookmovie2.to";
         let is_movie = req.media_type == "movie";
 
@@ -283,13 +280,35 @@ impl Provider for LookMovieProvider {
             .streams
             .ok_or_else(|| "No streams returned by LookMovie access endpoint".to_string())?;
 
-        // Pick highest quality available
-        let quality_candidates = ["1080p", "1080", "720p", "720", "480p", "480", "360p", "360"];
+        // Determine quality candidate order based on requested quality
+        let requested_q = quality.unwrap_or("auto").to_lowercase();
+        let quality_candidates: &[&str] = if requested_q.contains("1080") {
+            &["1080p", "1080", "720p", "720", "480p", "480", "360p", "360"]
+        } else if requested_q.contains("720") {
+            &["720p", "720", "480p", "480", "360p", "360"]
+        } else if requested_q.contains("480") {
+            &["480p", "480", "360p", "360"]
+        } else if requested_q.contains("360") {
+            &["360p", "360"]
+        } else {
+            &["1080p", "1080", "720p", "720", "480p", "480", "360p", "360"]
+        };
+
         let mut chosen_stream = None;
+        let mut chosen_quality_label = "480p SD";
         for q in quality_candidates {
-            if let Some(Some(u)) = streams.get(q) {
+            if let Some(Some(u)) = streams.get(*q) {
                 if !u.is_empty() {
                     chosen_stream = Some(u.clone());
+                    chosen_quality_label = if q.starts_with("1080") {
+                        "1080p FHD"
+                    } else if q.starts_with("720") {
+                        "720p HD"
+                    } else if q.starts_with("480") {
+                        "480p SD"
+                    } else {
+                        "360p SD"
+                    };
                     break;
                 }
             }
@@ -350,14 +369,26 @@ impl Provider for LookMovieProvider {
 
         Ok(StreamCandidate {
             stream_url,
-            provider_name: self.name().to_string(),
+            provider_name: "LookMovie (Fallback CDN)".to_string(),
             headers,
             subtitles,
             expires_at,
             embed_url: Some(play_url),
             request: req.clone(),
             actual_title: Some(req.title.clone()),
+            quality: Some(chosen_quality_label.to_string()),
         })
+    }
+}
+
+#[async_trait]
+impl Provider for LookMovieProvider {
+    fn name(&self) -> &'static str {
+        "LookMovie (Fallback CDN)"
+    }
+
+    async fn resolve(&self, req: &MediaRequest) -> Result<StreamCandidate, String> {
+        self.resolve_with_quality(req, None).await
     }
 
     async fn refresh_token(&self, candidate: &mut StreamCandidate) -> Result<(), String> {

@@ -55,13 +55,38 @@ impl MpvController {
 
         let mut cmd = Command::new(&cfg.player);
         cmd.arg(format!("--input-ipc-server={}", self.ipc_path.display()));
+        let quality_tag = stream.quality.as_deref().unwrap_or("Auto");
         let title_with_provider = format!(
-            "KittyMov: {} [{}] [{}]",
+            "KittyMov: {} [{}] [{}] [{}]",
             title,
             stream.provider_name,
+            quality_tag,
             cfg.audio_mode.to_uppercase()
         );
         cmd.arg(format!("--title={}", title_with_provider));
+
+        let q_pref = stream
+            .quality
+            .as_deref()
+            .or(Some(cfg.preferred_quality.as_str()))
+            .unwrap_or("auto")
+            .to_lowercase();
+
+        if q_pref.contains("480") {
+            cmd.arg("--ytdl-format=bestvideo[height<=?480]+bestaudio/best[height<=?480]/best");
+            cmd.arg("--hls-bitrate=1500000");
+        } else if q_pref.contains("720") {
+            cmd.arg("--ytdl-format=bestvideo[height<=?720]+bestaudio/best[height<=?720]/best");
+            cmd.arg("--hls-bitrate=3500000");
+        } else if q_pref.contains("1080") {
+            cmd.arg("--ytdl-format=bestvideo[height<=?1080]+bestaudio/best[height<=?1080]/best");
+            cmd.arg("--hls-bitrate=max");
+        } else if q_pref.contains("360") {
+            cmd.arg("--ytdl-format=bestvideo[height<=?360]+bestaudio/best[height<=?360]/best");
+            cmd.arg("--hls-bitrate=800000");
+        } else {
+            cmd.arg("--hls-bitrate=max");
+        }
 
         let is_sub = cfg.audio_mode.to_lowercase() == "sub";
         if is_sub {

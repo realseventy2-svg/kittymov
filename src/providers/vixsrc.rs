@@ -157,6 +157,7 @@ impl Provider for VixSrcProvider {
             embed_url: Some(embed_url),
             request: req.clone(),
             actual_title,
+            quality: Some("1080p FHD".to_string()),
         })
     }
 

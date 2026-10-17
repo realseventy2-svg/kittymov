@@ -71,20 +71,20 @@ pub fn default_qualities_for_provider(provider_id: &str) -> Vec<QualityTrackOpti
     match provider_id.to_lowercase().as_str() {
         "lookmovie" => vec![
             QualityTrackOption {
-                label: "Auto (1080p)".to_string(),
-                description: "Highest available LookMovie CDN stream".to_string(),
+                label: "Auto (Best Available)".to_string(),
+                description: "Auto-negotiate highest free stream (480p SD)".to_string(),
             },
             QualityTrackOption {
-                label: "1080p FHD".to_string(),
-                description: "LookMovie 1080p high bitrate encode".to_string(),
+                label: "480p SD (Available)".to_string(),
+                description: "Standard definition (LookMovie public tier maximum)".to_string(),
             },
             QualityTrackOption {
-                label: "720p HD".to_string(),
-                description: "720p high efficiency stream for smooth playback".to_string(),
+                label: "720p HD (Premium Gated)".to_string(),
+                description: "Locked on LookMovie free CDN — falls back to 480p SD".to_string(),
             },
             QualityTrackOption {
-                label: "480p SD".to_string(),
-                description: "Standard definition low-bandwidth stream".to_string(),
+                label: "1080p FHD (Premium Gated)".to_string(),
+                description: "Locked on LookMovie free CDN — falls back to 480p SD".to_string(),
             },
         ],
         "vixsrc" => vec![
@@ -100,6 +100,10 @@ pub fn default_qualities_for_provider(provider_id: &str) -> Vec<QualityTrackOpti
                 label: "720p HD".to_string(),
                 description: "720p compressed stream".to_string(),
             },
+            QualityTrackOption {
+                label: "480p SD".to_string(),
+                description: "480p standard definition stream".to_string(),
+            },
         ],
         _ => vec![
             QualityTrackOption {
@@ -113,6 +117,10 @@ pub fn default_qualities_for_provider(provider_id: &str) -> Vec<QualityTrackOpti
             QualityTrackOption {
                 label: "720p HD".to_string(),
                 description: "Preferred 720p HD".to_string(),
+            },
+            QualityTrackOption {
+                label: "480p SD".to_string(),
+                description: "Preferred 480p SD".to_string(),
             },
         ],
     }
@@ -377,6 +385,7 @@ impl ProviderSelectModalState {
         poster_path: String,
         preferred_provider: &str,
         preferred_lang: &str,
+        preferred_quality: &str,
     ) -> Self {
         let options = default_provider_options();
         let selected_idx = options
@@ -386,6 +395,21 @@ impl ProviderSelectModalState {
         let chosen_prov = options[selected_idx].id.as_str();
         let sources = default_sources_for_provider(chosen_prov);
         let qualities = default_qualities_for_provider(chosen_prov);
+        let q_target = preferred_quality.to_lowercase();
+        let selected_quality_idx = qualities
+            .iter()
+            .position(|q| {
+                if q_target.contains("1080") {
+                    q.label.contains("1080")
+                } else if q_target.contains("720") {
+                    q.label.contains("720")
+                } else if q_target.contains("480") {
+                    q.label.contains("480")
+                } else {
+                    q.label.contains("Auto")
+                }
+            })
+            .unwrap_or(0);
         let subtitles = default_subtitles_for_provider(chosen_prov, preferred_lang);
 
         Self {
@@ -399,7 +423,7 @@ impl ProviderSelectModalState {
             sources,
             selected_source_idx: 0,
             qualities,
-            selected_quality_idx: 0,
+            selected_quality_idx,
             subtitles,
             selected_subtitle_idx: 0,
             is_loading_subtitles: false,
@@ -414,8 +438,29 @@ impl ProviderSelectModalState {
             .unwrap_or("auto");
         self.sources = default_sources_for_provider(prov_id);
         self.selected_source_idx = 0;
+        let prev_quality_label = self
+            .qualities
+            .get(self.selected_quality_idx)
+            .map(|q| q.label.clone());
         self.qualities = default_qualities_for_provider(prov_id);
-        self.selected_quality_idx = 0;
+        if let Some(prev) = prev_quality_label {
+            let key = if prev.contains("1080") {
+                "1080"
+            } else if prev.contains("720") {
+                "720"
+            } else if prev.contains("480") {
+                "480"
+            } else {
+                "auto"
+            };
+            self.selected_quality_idx = self
+                .qualities
+                .iter()
+                .position(|q| q.label.to_lowercase().contains(key))
+                .unwrap_or(0);
+        } else {
+            self.selected_quality_idx = 0;
+        }
         self.subtitles = default_subtitles_for_provider(prov_id, preferred_lang);
         self.selected_subtitle_idx = 0;
     }
@@ -564,7 +609,7 @@ impl SettingsCategory {
     pub fn item_count(&self) -> usize {
         match self {
             SettingsCategory::General => 5,
-            SettingsCategory::Playback => 7,
+            SettingsCategory::Playback => 8,
             SettingsCategory::Providers => 4,
             SettingsCategory::Appearance => 3,
             SettingsCategory::Storage => 6,
@@ -759,6 +804,19 @@ pub fn get_all_settings_metadata(cfg: &Config) -> Vec<SettingMatch> {
                 other => other.to_string(),
             },
             description: "GPU video acceleration profile passed to mpv for efficient, stutter-free playback.",
+        },
+        SettingMatch {
+            category: SettingsCategory::Playback,
+            category_idx: 1,
+            item_idx: 7,
+            label: "Preferred Stream Quality",
+            value_str: match cfg.preferred_quality.to_lowercase().as_str() {
+                "480p" => "480p SD (Data Saver)".to_string(),
+                "720p" => "720p HD (Balanced)".to_string(),
+                "1080p" => "1080p FHD (High Quality)".to_string(),
+                _ => "Auto (Best Available)".to_string(),
+            },
+            description: "Default stream resolution requested from providers and configured in MPV bitrate profiles.",
         },
 
         // Providers (0..4)
@@ -1621,6 +1679,11 @@ impl App {
                         let hwdecs = ["auto", "auto-safe", "vaapi", "nvdec", "videotoolbox", "no"];
                         self.cfg.hwdec = cycle_list(&hwdecs, &self.cfg.hwdec, forward);
                     }
+                    7 => {
+                        let qualities = ["auto", "1080p", "720p", "480p"];
+                        self.cfg.preferred_quality =
+                            cycle_list(&qualities, &self.cfg.preferred_quality, forward);
+                    }
                     _ => {}
                 },
                 SettingsCategory::Providers => match s.item_idx {
@@ -1756,6 +1819,7 @@ impl App {
                     self.cfg.sub_delay = 0.0;
                     self.cfg.auto_play_next = true;
                     self.cfg.hwdec = "auto".to_string();
+                    self.cfg.preferred_quality = "1080p".to_string();
                 }
                 SettingsCategory::Providers => {
                     self.cfg.preferred_provider = "auto".to_string();
@@ -2040,14 +2104,14 @@ impl App {
                     year: Some(year),
                 };
 
-                let mut p_modal = ProviderSelectModalState::new(
+                let p_modal = ProviderSelectModalState::new(
                     target_title,
                     request,
                     poster,
                     &self.cfg.preferred_provider,
                     &self.cfg.sub_language,
+                    &self.cfg.preferred_quality,
                 );
-                p_modal.update_dependent_tracks(&self.cfg.sub_language);
                 self.provider_modal = Some(p_modal);
                 return;
             }
@@ -2064,14 +2128,14 @@ impl App {
                     title: item.title.clone(),
                     year: Some(item.year.clone()),
                 };
-                let mut p_modal = ProviderSelectModalState::new(
+                let p_modal = ProviderSelectModalState::new(
                     target_title,
                     request,
                     item.poster_path,
                     &self.cfg.preferred_provider,
                     &self.cfg.sub_language,
+                    &self.cfg.preferred_quality,
                 );
-                p_modal.update_dependent_tracks(&self.cfg.sub_language);
                 self.provider_modal = Some(p_modal);
             } else {
                 let target_title = format!("{} ({})", item.title, item.year);
@@ -2083,14 +2147,14 @@ impl App {
                     title: item.title.clone(),
                     year: Some(item.year.clone()),
                 };
-                let mut p_modal = ProviderSelectModalState::new(
+                let p_modal = ProviderSelectModalState::new(
                     target_title,
                     request,
                     item.poster_path,
                     &self.cfg.preferred_provider,
                     &self.cfg.sub_language,
+                    &self.cfg.preferred_quality,
                 );
-                p_modal.update_dependent_tracks(&self.cfg.sub_language);
                 self.provider_modal = Some(p_modal);
             }
         }
@@ -2240,7 +2304,7 @@ impl App {
         req: MediaRequest,
         poster_path: String,
         provider_choice: String,
-        _quality_choice: Option<String>,
+        quality_choice: Option<String>,
         subtitle_choice: Option<SubtitleTrackOption>,
         catalog_item: Option<MediaItem>,
     ) {
@@ -2366,6 +2430,7 @@ impl App {
         let disp_title_clone = display_title.clone();
         let req_clone = req.clone();
         let poster_clone = poster_path.clone();
+        let quality_choice_clone = quality_choice.clone();
 
         let handle = tokio::spawn(async move {
             // STEP 1: Metadata Resolution & Episode mapping
@@ -2428,8 +2493,12 @@ impl App {
                 detail: format!("Connecting to {} CDN...", prov_label),
             });
 
+            let effective_quality = quality_choice_clone
+                .as_deref()
+                .or(Some(cfg.preferred_quality.as_str()));
+
             let resolve_result = providers
-                .resolve_with_choice(&active_provider, &mapped_req)
+                .resolve_with_choice_and_quality(&active_provider, &mapped_req, effective_quality)
                 .await;
             let mut stream = match resolve_result {
                 Ok(s) => s,
@@ -2443,7 +2512,10 @@ impl App {
                             status: StepStatus::Active,
                             detail: format!("{} failed; failing over to LookMovie...", prov_label),
                         });
-                        match providers.resolve_with_choice("lookmovie", &req_clone).await {
+                        match providers
+                            .resolve_with_choice_and_quality("lookmovie", &req_clone, effective_quality)
+                            .await
+                        {
                             Ok(s) => s,
                             Err(err_fallback) => {
                                 let _ = tx.send(LoadingProgress::StepUpdate {
@@ -2473,10 +2545,25 @@ impl App {
                 }
             };
 
+            let quality_label = stream.quality.as_deref().unwrap_or("Auto");
+            let detail_msg = if stream.provider_name.to_lowercase().contains("lookmovie") {
+                if let Some(req_q) = effective_quality {
+                    if (req_q.contains("1080") || req_q.contains("720")) && quality_label.contains("480") {
+                        "LookMovie free CDN is limited to 480p (720p/1080p premium-gated); selected 480p SD".to_string()
+                    } else {
+                        format!("CDN Stream live: LookMovie [{}]", quality_label)
+                    }
+                } else {
+                    format!("CDN Stream live: LookMovie [{}]", quality_label)
+                }
+            } else {
+                format!("CDN Stream live: {} [{}]", stream.provider_name, quality_label)
+            };
+
             let _ = tx.send(LoadingProgress::StepUpdate {
                 step: LoadingStep::ConnectingProvider,
                 status: StepStatus::Completed,
-                detail: format!("CDN Stream live: {}", stream.provider_name),
+                detail: detail_msg,
             });
 
             // STEP 3: Subtitles resolution
@@ -2854,7 +2941,11 @@ impl App {
 
         match self
             .providers
-            .resolve_with_choice(provider_choice, &req)
+            .resolve_with_choice_and_quality(
+                provider_choice,
+                &req,
+                Some(&self.cfg.preferred_quality),
+            )
             .await
         {
             Ok(mut stream) => {
@@ -2979,7 +3070,11 @@ impl App {
 
         match self
             .providers
-            .resolve_with_choice(provider_choice, &req)
+            .resolve_with_choice_and_quality(
+                provider_choice,
+                &req,
+                Some(&self.cfg.preferred_quality),
+            )
             .await
         {
             Ok(mut stream) => {
@@ -3324,7 +3419,7 @@ mod tests {
     fn test_settings_categories_and_counts() {
         assert_eq!(SettingsCategory::ALL.len(), 5);
         assert_eq!(SettingsCategory::General.item_count(), 5);
-        assert_eq!(SettingsCategory::Playback.item_count(), 7);
+        assert_eq!(SettingsCategory::Playback.item_count(), 8);
         assert_eq!(SettingsCategory::Providers.item_count(), 4);
         assert_eq!(SettingsCategory::Appearance.item_count(), 3);
         assert_eq!(SettingsCategory::Storage.item_count(), 6);
@@ -3522,6 +3617,7 @@ mod tests {
             "/test.jpg".to_string(),
             "auto",
             "eng",
+            "1080p",
         );
 
         assert_eq!(modal.active_category, ProviderModalCategory::Provider);

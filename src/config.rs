@@ -28,6 +28,8 @@ pub struct Config {
     pub theme_name: String,
     #[serde(default = "default_poster_render_mode")]
     pub poster_render_mode: String,
+    #[serde(default = "default_preferred_quality")]
+    pub preferred_quality: String,
     pub tmdb_api_key: String,
     pub mpv_extra_args: Vec<String>,
 }
@@ -64,6 +66,10 @@ fn default_poster_render_mode() -> String {
     "high-res".to_string()
 }
 
+fn default_preferred_quality() -> String {
+    "1080p".to_string()
+}
+
 impl Config {
     pub fn save(&self) -> Result<(), std::io::Error> {
         let dir = get_config_dir();
@@ -97,6 +103,7 @@ impl Default for Config {
             episode_order: default_episode_order(),
             theme_name: default_theme_name(),
             poster_render_mode: default_poster_render_mode(),
+            preferred_quality: default_preferred_quality(),
             tmdb_api_key: "653bb8af90162bd98fc7ee32bcbbfb3d".to_string(),
             mpv_extra_args: vec![
                 "--save-position-on-quit".to_string(),

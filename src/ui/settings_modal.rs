@@ -661,6 +661,16 @@ fn get_category_rows(
                 }),
                 "GPU hardware acceleration engine passed to mpv for efficient 1080p video decoding.",
             ),
+            (
+                "Preferred Stream Quality",
+                SettingWidget::Select(match cfg.preferred_quality.to_lowercase().as_str() {
+                    "480p" => "480p SD (Data Saver)".to_string(),
+                    "720p" => "720p HD (Balanced)".to_string(),
+                    "1080p" => "1080p FHD (High Quality)".to_string(),
+                    _ => "Auto (Best Available)".to_string(),
+                }),
+                "Default stream resolution requested from providers and configured in MPV bitrate profiles.",
+            ),
         ],
         SettingsCategory::Providers => vec![
             (

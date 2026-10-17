@@ -28,6 +28,7 @@ pub struct StreamCandidate {
     pub embed_url: Option<String>,
     pub request: MediaRequest,
     pub actual_title: Option<String>,
+    pub quality: Option<String>,
 }
 
 impl StreamCandidate {
@@ -90,10 +91,21 @@ impl ProviderManager {
 
     /// Resolves using a specific provider by identifier ("auto", "vixsrc", "lookmovie").
     /// If "auto", performs full fallback across configured providers.
+    #[allow(dead_code)]
     pub async fn resolve_with_choice(
         &self,
         choice: &str,
         req: &MediaRequest,
+    ) -> Result<StreamCandidate, String> {
+        self.resolve_with_choice_and_quality(choice, req, None).await
+    }
+
+    /// Resolves using a specific provider and applies the requested quality preference.
+    pub async fn resolve_with_choice_and_quality(
+        &self,
+        choice: &str,
+        req: &MediaRequest,
+        quality: Option<&str>,
     ) -> Result<StreamCandidate, String> {
         let key = choice.to_lowercase();
         let mut candidate = if key.contains("vixsrc") {
@@ -104,12 +116,16 @@ impl ProviderManager {
                     break;
                 }
             }
-            if let Some(c) = res {
+            let mut cand = if let Some(c) = res {
                 c
             } else {
                 let vix = vixsrc::VixSrcProvider::new();
                 vix.resolve(req).await?
+            };
+            if let Some(q) = quality {
+                cand.quality = Some(q.to_string());
             }
+            cand
         } else if key.contains("lookmovie") {
             let mut res = None;
             for provider in &self.providers {
@@ -118,14 +134,26 @@ impl ProviderManager {
                     break;
                 }
             }
-            if let Some(c) = res {
+            let mut cand = if let Some(c) = res {
                 c
             } else {
                 let look = lookmovie::LookMovieProvider::new();
-                look.resolve(req).await?
+                look.resolve_with_quality(req, quality).await?
+            };
+            if cand.quality.is_none() {
+                if let Some(q) = quality {
+                    cand.quality = Some(q.to_string());
+                }
             }
+            cand
         } else {
-            self.resolve_with_fallback(req).await?
+            let mut cand = self.resolve_with_fallback(req).await?;
+            if let Some(q) = quality {
+                if cand.quality.is_none() {
+                    cand.quality = Some(q.to_string());
+                }
+            }
+            cand
         };
 
         // If candidate has no external subtitles, opportunistically augment from LookMovie with a short timeout
@@ -239,6 +267,7 @@ mod tests {
                     embed_url: None,
                     request: req.clone(),
                     actual_title: Some("Mock Title".to_string()),
+                    quality: None,
                 })
             } else {
                 Err("Simulated 404 / connection timeout".to_string())
