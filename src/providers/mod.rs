@@ -4,6 +4,7 @@ pub mod vixsrc;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -91,25 +92,53 @@ impl ProviderManager {
     /// If "auto", performs full fallback across configured providers.
     pub async fn resolve_with_choice(&self, choice: &str, req: &MediaRequest) -> Result<StreamCandidate, String> {
         let key = choice.to_lowercase();
-        if key.contains("vixsrc") {
+        let mut candidate = if key.contains("vixsrc") {
+            let mut res = None;
             for provider in &self.providers {
                 if provider.name().to_lowercase().contains("vixsrc") {
-                    return provider.resolve(req).await;
+                    res = Some(provider.resolve(req).await?);
+                    break;
                 }
             }
-            let vix = vixsrc::VixSrcProvider::new();
-            vix.resolve(req).await
+            if let Some(c) = res {
+                c
+            } else {
+                let vix = vixsrc::VixSrcProvider::new();
+                vix.resolve(req).await?
+            }
         } else if key.contains("lookmovie") {
+            let mut res = None;
             for provider in &self.providers {
                 if provider.name().to_lowercase().contains("lookmovie") {
-                    return provider.resolve(req).await;
+                    res = Some(provider.resolve(req).await?);
+                    break;
                 }
             }
-            let look = lookmovie::LookMovieProvider::new();
-            look.resolve(req).await
+            if let Some(c) = res {
+                c
+            } else {
+                let look = lookmovie::LookMovieProvider::new();
+                look.resolve(req).await?
+            }
         } else {
-            self.resolve_with_fallback(req).await
+            self.resolve_with_fallback(req).await?
+        };
+
+        // If candidate has no external subtitles, opportunistically augment from LookMovie with a short timeout
+        if candidate.subtitles.is_empty() && !candidate.provider_name.to_lowercase().contains("lookmovie") {
+            for provider in &self.providers {
+                if provider.name().to_lowercase().contains("lookmovie") {
+                    if let Ok(Ok(look_cand)) = tokio::time::timeout(Duration::from_millis(2500), provider.resolve(req)).await {
+                        if !look_cand.subtitles.is_empty() {
+                            candidate.subtitles = look_cand.subtitles;
+                        }
+                    }
+                    break;
+                }
+            }
         }
+
+        Ok(candidate)
     }
 
     #[allow(dead_code)]
@@ -124,7 +153,21 @@ impl ProviderManager {
 
         for provider in &self.providers {
             match provider.resolve(req).await {
-                Ok(candidate) => return Ok(candidate),
+                Ok(mut candidate) => {
+                    if candidate.subtitles.is_empty() && !candidate.provider_name.to_lowercase().contains("lookmovie") {
+                        for p in &self.providers {
+                            if p.name().to_lowercase().contains("lookmovie") {
+                                if let Ok(Ok(look_cand)) = tokio::time::timeout(Duration::from_millis(2500), p.resolve(req)).await {
+                                    if !look_cand.subtitles.is_empty() {
+                                        candidate.subtitles = look_cand.subtitles;
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    return Ok(candidate);
+                }
                 Err(err) => {
                     failures.push(format!("{}: {}", provider.name(), err));
                 }
@@ -251,6 +294,23 @@ mod tests {
         let candidate = res.unwrap();
         assert!(candidate.stream_url.contains(".m3u8"));
         assert_eq!(candidate.provider_name, "LookMovie (Fallback CDN)");
+    }
+
+    #[tokio::test]
+    async fn test_lookmovie_live_resolve_tv_show() {
+        let provider = lookmovie::LookMovieProvider::new();
+        let req = MediaRequest {
+            tmdb_id: 4951,
+            media_type: "tv".to_string(),
+            season: Some(1),
+            episode: Some(1),
+            title: "Steven Universe".to_string(),
+            year: Some("2013".to_string()),
+        };
+
+        let res = provider.resolve(&req).await;
+        println!("LookMovie TV show result: {:?}", res);
+        assert!(res.is_ok(), "LookMovie should resolve Steven Universe: {:?}", res.err());
     }
 
     #[tokio::test]

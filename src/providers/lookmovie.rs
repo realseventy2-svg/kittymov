@@ -16,7 +16,6 @@ pub struct LookMovieProvider {
     hash_re: Regex,
     expires_re: Regex,
     movie_id_re: Regex,
-    seasons_re: Regex,
 }
 
 #[derive(Deserialize)]
@@ -59,7 +58,6 @@ impl LookMovieProvider {
         let hash_re = Regex::new(r#"hash:\s*["']([^"']+)["']"#).unwrap();
         let expires_re = Regex::new(r#"expires:\s*(\d+)"#).unwrap();
         let movie_id_re = Regex::new(r#"id_movie:\s*(\d+)"#).unwrap();
-        let seasons_re = Regex::new(r#"window\.seasons\s*=\s*'([^']+)'"#).unwrap();
 
         Self {
             client,
@@ -68,7 +66,6 @@ impl LookMovieProvider {
             hash_re,
             expires_re,
             movie_id_re,
-            seasons_re,
         }
     }
 
@@ -200,12 +197,9 @@ impl Provider for LookMovieProvider {
                 base_url, id_movie, hash, expires_str
             )
         } else {
-            let seasons_raw = self.seasons_re.captures(&play_html)
-                .and_then(|c| c.get(1))
-                .map(|m| m.as_str())
+            let unescaped = extract_window_seasons(&play_html)
                 .ok_or_else(|| "Could not find window.seasons in LookMovie show play page".to_string())?;
 
-            let unescaped = unescape_js_string(seasons_raw);
             let seasons_json: serde_json::Value = serde_json::from_str(&unescaped)
                 .map_err(|e| format!("Failed to parse window.seasons JSON: {}", e))?;
 
@@ -252,36 +246,42 @@ impl Provider for LookMovieProvider {
         let stream_url = chosen_stream
             .ok_or_else(|| "LookMovie: No playable stream URL found in access response".to_string())?;
 
-        // Extract English subtitles if available
+        // Extract subtitles (prioritizing English and popular languages)
         let mut subtitles = Vec::new();
         if let Some(subs) = access_resp.subtitles {
-            for sub in subs {
+            // Priority 1: English
+            for sub in &subs {
                 if let Some(ref lang) = sub.language {
                     if lang.eq_ignore_ascii_case("english") {
-                        if let Some(file_val) = sub.file {
-                            match file_val {
-                                serde_json::Value::String(s) => {
-                                    let sub_url = if s.starts_with('/') {
-                                        format!("{}{}", base_url, s)
-                                    } else {
-                                        s
-                                    };
+                        if let Some(ref file_val) = sub.file {
+                            if let Some(s) = file_val.as_str() {
+                                let sub_url = if s.starts_with('/') {
+                                    format!("{}{}", base_url, s)
+                                } else {
+                                    s.to_string()
+                                };
+                                if !subtitles.contains(&sub_url) {
                                     subtitles.push(sub_url);
                                 }
-                                serde_json::Value::Array(arr) => {
-                                    for item in arr {
-                                        if let Some(s) = item.as_str() {
-                                            let sub_url = if s.starts_with('/') {
-                                                format!("{}{}", base_url, s)
-                                            } else {
-                                                s.to_string()
-                                            };
-                                            subtitles.push(sub_url);
-                                        }
-                                    }
-                                }
-                                _ => {}
                             }
+                        }
+                    }
+                }
+            }
+            // Priority 2: Other available languages (up to 15 total)
+            for sub in subs {
+                if subtitles.len() >= 15 {
+                    break;
+                }
+                if let Some(ref file_val) = sub.file {
+                    if let Some(s) = file_val.as_str() {
+                        let sub_url = if s.starts_with('/') {
+                            format!("{}{}", base_url, s)
+                        } else {
+                            s.to_string()
+                        };
+                        if !subtitles.contains(&sub_url) {
+                            subtitles.push(sub_url);
                         }
                     }
                 }
@@ -311,47 +311,93 @@ impl Provider for LookMovieProvider {
     }
 }
 
+fn extract_window_seasons(html: &str) -> Option<String> {
+    for line in html.lines() {
+        let trimmed = line.trim();
+        if let Some(idx) = trimmed.find("window.seasons") {
+            let after = &trimmed[idx..];
+            if let Some(first_quote) = after.find('\'') {
+                let rest = &after[first_quote + 1..];
+                if let Some(last_quote) = rest.rfind('\'') {
+                    let raw = &rest[..last_quote];
+                    return Some(unescape_js_string(raw));
+                }
+            }
+        }
+    }
+    None
+}
+
 fn unescape_js_string(s: &str) -> String {
     s.replace(r#"\""#, "\"")
         .replace(r#"\/"#, "/")
+        .replace(r#"\'"#, "'")
         .replace(r#"\\"#, r#"\"#)
 }
 
 fn find_episode_id(val: &serde_json::Value, season_str: &str, episode_str: &str) -> Option<String> {
     let seasons_map = val.as_object()?;
     let season_obj = seasons_map.get(season_str)?;
-    let episodes_map = season_obj.get("episodes")?.as_object()?;
+    let eps_val = season_obj.get("episodes")?;
 
-    // Search by key or by episode_number field
-    if let Some(ep) = episodes_map.get(episode_str) {
-        if let Some(id) = ep.get("id_episode") {
-            if let Some(s) = id.as_str() {
-                return Some(s.to_string());
-            } else if let Some(n) = id.as_i64() {
-                return Some(n.to_string());
+    // 1. If episodes is a JSON array
+    if let Some(episodes_list) = eps_val.as_array() {
+        for ep in episodes_list {
+            let ep_num_match = ep.get("episode_number")
+                .and_then(|v| {
+                    if let Some(s) = v.as_str() {
+                        Some(s == episode_str)
+                    } else if let Some(n) = v.as_i64() {
+                        Some(n.to_string() == episode_str)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(false);
+
+            if ep_num_match {
+                if let Some(id) = ep.get("id_episode") {
+                    if let Some(s) = id.as_str() {
+                        return Some(s.to_string());
+                    } else if let Some(n) = id.as_i64() {
+                        return Some(n.to_string());
+                    }
+                }
             }
         }
-    }
-
-    for (_key, ep) in episodes_map {
-        let ep_num_match = ep.get("episode_number")
-            .and_then(|v| {
-                if let Some(s) = v.as_str() {
-                    Some(s == episode_str)
-                } else if let Some(n) = v.as_i64() {
-                    Some(n.to_string() == episode_str)
-                } else {
-                    None
-                }
-            })
-            .unwrap_or(false);
-
-        if ep_num_match {
+    } else if let Some(episodes_map) = eps_val.as_object() {
+        // 2. If episodes is a JSON object / map
+        if let Some(ep) = episodes_map.get(episode_str) {
             if let Some(id) = ep.get("id_episode") {
                 if let Some(s) = id.as_str() {
                     return Some(s.to_string());
                 } else if let Some(n) = id.as_i64() {
                     return Some(n.to_string());
+                }
+            }
+        }
+
+        for (k, ep) in episodes_map {
+            let key_match = k == episode_str;
+            let ep_num_match = ep.get("episode_number")
+                .and_then(|v| {
+                    if let Some(s) = v.as_str() {
+                        Some(s == episode_str)
+                    } else if let Some(n) = v.as_i64() {
+                        Some(n.to_string() == episode_str)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(false);
+
+            if key_match || ep_num_match {
+                if let Some(id) = ep.get("id_episode") {
+                    if let Some(s) = id.as_str() {
+                        return Some(s.to_string());
+                    } else if let Some(n) = id.as_i64() {
+                        return Some(n.to_string());
+                    }
                 }
             }
         }

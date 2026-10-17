@@ -53,14 +53,20 @@ impl MpvController {
         let is_sub = cfg.audio_mode.to_lowercase() == "sub";
         if is_sub {
             cmd.arg(format!("--alang=jpn,ja,Japanese,original,{},en,eng", cfg.audio_language));
-            cmd.arg(format!("--slang={},en,enUS,English", cfg.sub_language));
+            cmd.arg(format!("--slang={},en,enUS,English,ita,ger,fre,spa", cfg.sub_language));
             cmd.arg("--sub-visibility=yes");
+            cmd.arg("--subs-with-matching-audio=yes");
+            cmd.arg("--sid=auto");
             cmd.arg("--sub-auto=fuzzy");
+            cmd.arg("--demuxer-mkv-subtitle-preroll=yes");
         } else {
             cmd.arg(format!("--alang={},en,enUS,English,jpn", cfg.audio_language));
-            cmd.arg(format!("--slang={},en,enUS,English", cfg.sub_language));
-            cmd.arg("--sub-visibility=auto");
+            cmd.arg(format!("--slang={},en,enUS,English,ita,ger,fre,spa", cfg.sub_language));
+            cmd.arg("--sub-visibility=yes");
+            cmd.arg("--subs-with-matching-audio=yes");
+            cmd.arg("--sid=auto");
             cmd.arg("--sub-auto=fuzzy");
+            cmd.arg("--demuxer-mkv-subtitle-preroll=yes");
         }
         cmd.arg(format!("--hwdec={}", cfg.hwdec));
 
