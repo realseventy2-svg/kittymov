@@ -86,14 +86,6 @@ pub fn render_ui(f: &mut Frame, app: &App) {
     );
 
     // Render right catalog column
-    let active_tab_name = match app.active_tab {
-        crate::app::ActiveTab::Movies => "Trending Movies",
-        crate::app::ActiveTab::Series => "Trending Series",
-        crate::app::ActiveTab::Search => "Search Results",
-        crate::app::ActiveTab::History => "Watch History",
-        crate::app::ActiveTab::Bookmarks => "Bookmarks",
-    };
-
     render_catalog_panel(
         f,
         columns[1],
@@ -102,7 +94,8 @@ pub fn render_ui(f: &mut Frame, app: &App) {
         &app.search_query,
         app.is_searching,
         &app.status_message,
-        active_tab_name,
+        app.active_tab,
+        &app.db,
         app.cfg.auto_play_next,
         &app.cfg.audio_mode,
         &app.cfg.preferred_provider,
@@ -110,6 +103,15 @@ pub fn render_ui(f: &mut Frame, app: &App) {
 
     // If Episode modal is active, overlay it
     if let Some(ref modal_state) = app.episode_modal {
+        let current_season_num = modal_state
+            .seasons
+            .get(modal_state.selected_season_idx)
+            .map(|s| s.season_number)
+            .unwrap_or(1);
+        let watched_eps = app
+            .db
+            .get_watched_episodes(modal_state.series.tmdb_id, current_season_num);
+
         render_episode_modal(
             f,
             size,
@@ -118,6 +120,7 @@ pub fn render_ui(f: &mut Frame, app: &App) {
             modal_state.selected_season_idx,
             &modal_state.episodes,
             modal_state.selected_episode_idx,
+            &watched_eps,
             app.cfg.auto_play_next,
             &app.cfg.audio_mode,
             &app.cfg.episode_order,

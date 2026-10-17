@@ -16,6 +16,7 @@ pub fn render_episode_modal(
     current_season_idx: usize,
     episodes: &[TvEpisode],
     selected_ep_idx: usize,
+    watched_episodes: &std::collections::HashSet<i32>,
     auto_play: bool,
     audio_mode: &str,
     episode_order: &str,
@@ -124,10 +125,24 @@ pub fn render_episode_modal(
         for (i, ep) in episodes[start_idx..end_idx].iter().enumerate() {
             let actual_idx = start_idx + i;
             let is_sel = actual_idx == selected_ep_idx;
+            let is_watched = watched_episodes.contains(&ep.episode_number);
 
             let ep_code = format!("E{:02}", ep.episode_number);
             let ep_title = &ep.name;
             let ep_dur = &ep.duration;
+            let row_bg = if is_sel { Theme::SELECTION_BG } else { Theme::SURFACE };
+
+            let watch_span = if is_watched {
+                Span::styled(
+                    " [✓]",
+                    Style::default()
+                        .fg(Theme::ACCENT_GREEN)
+                        .bg(row_bg)
+                        .add_modifier(Modifier::BOLD),
+                )
+            } else {
+                Span::styled("    ", Style::default().bg(row_bg))
+            };
 
             let line = if is_sel {
                 Line::from(vec![
@@ -135,39 +150,42 @@ pub fn render_episode_modal(
                         " ◆ ",
                         Style::default()
                             .fg(Theme::ACCENT_PINK)
+                            .bg(row_bg)
                             .add_modifier(Modifier::BOLD),
                     ),
                     Span::styled(
                         ep_code,
                         Style::default()
                             .fg(Theme::ACCENT_CYAN)
-                            .bg(Theme::SELECTION_BG)
+                            .bg(row_bg)
                             .add_modifier(Modifier::BOLD),
                     ),
-                    Span::styled("  ", Style::default().bg(Theme::SELECTION_BG)),
+                    watch_span,
+                    Span::styled("  ", Style::default().bg(row_bg)),
                     Span::styled(
                         ep_title,
                         Style::default()
                             .fg(Theme::TEXT_TITLE)
-                            .bg(Theme::SELECTION_BG)
+                            .bg(row_bg)
                             .add_modifier(Modifier::BOLD),
                     ),
                     Span::styled(
                         format!("  ({})", ep_dur),
                         Style::default()
                             .fg(Theme::ACCENT_GREEN)
-                            .bg(Theme::SELECTION_BG),
+                            .bg(row_bg),
                     ),
                 ])
             } else {
                 Line::from(vec![
-                    Span::styled("   ", Style::default()),
-                    Span::styled(ep_code, Style::default().fg(Theme::TEXT_MUTED)),
-                    Span::styled("  ", Style::default()),
-                    Span::styled(ep_title, Style::default().fg(Theme::TEXT_BODY)),
+                    Span::styled("   ", Style::default().bg(row_bg)),
+                    Span::styled(ep_code, Style::default().fg(Theme::TEXT_MUTED).bg(row_bg)),
+                    watch_span,
+                    Span::styled("  ", Style::default().bg(row_bg)),
+                    Span::styled(ep_title, Style::default().fg(Theme::TEXT_BODY).bg(row_bg)),
                     Span::styled(
                         format!("  ({})", ep_dur),
-                        Style::default().fg(Theme::BORDER_MUTED),
+                        Style::default().fg(Theme::BORDER_MUTED).bg(row_bg),
                     ),
                 ])
             };
@@ -178,15 +196,26 @@ pub fn render_episode_modal(
     let ep_p = Paragraph::new(ep_lines);
     f.render_widget(ep_p, inner_chunks[1]);
 
-    // 3. Selected Episode Details (synopsis & air date)
+    // 3. Selected Episode Details (synopsis, air date & watch status)
     if let Some(ep) = episodes.get(selected_ep_idx) {
+        let is_watched = watched_episodes.contains(&ep.episode_number);
+        let mut meta_spans = vec![
+            Span::styled("Aired: ", Style::default().fg(Theme::ACCENT_CYAN)),
+            Span::styled(&ep.air_date, Style::default().fg(Theme::TEXT_BODY)),
+            Span::styled("  •  Duration: ", Style::default().fg(Theme::ACCENT_CYAN)),
+            Span::styled(&ep.duration, Style::default().fg(Theme::ACCENT_GREEN)),
+        ];
+        if is_watched {
+            meta_spans.push(Span::styled(
+                "  •  [✓ Watched]",
+                Style::default()
+                    .fg(Theme::ACCENT_GREEN)
+                    .add_modifier(Modifier::BOLD),
+            ));
+        }
+
         let ep_info = vec![
-            Line::from(vec![
-                Span::styled("Aired: ", Style::default().fg(Theme::ACCENT_CYAN)),
-                Span::styled(&ep.air_date, Style::default().fg(Theme::TEXT_BODY)),
-                Span::styled("  •  Duration: ", Style::default().fg(Theme::ACCENT_CYAN)),
-                Span::styled(&ep.duration, Style::default().fg(Theme::ACCENT_GREEN)),
-            ]),
+            Line::from(meta_spans),
             Line::from(Span::styled(
                 if ep.overview.is_empty() {
                     "No overview available."

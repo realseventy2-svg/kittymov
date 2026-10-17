@@ -238,6 +238,35 @@ impl Database {
         }
     }
 
+    pub fn is_watched(&self, tmdb_id: i64, media_type: &str) -> bool {
+        if let Ok(conn) = self.conn() {
+            conn.query_row(
+                "SELECT EXISTS(SELECT 1 FROM history WHERE tmdb_id = ?1 AND media_type = ?2)",
+                params![tmdb_id, media_type],
+                |row| row.get(0),
+            )
+            .unwrap_or(false)
+        } else {
+            false
+        }
+    }
+
+    pub fn get_watched_episodes(&self, tmdb_id: i64, season: i32) -> std::collections::HashSet<i32> {
+        let mut set = std::collections::HashSet::new();
+        if let Ok(conn) = self.conn() {
+            if let Ok(mut stmt) = conn.prepare(
+                "SELECT episode FROM history WHERE tmdb_id = ?1 AND season = ?2 AND episode > 0"
+            ) {
+                if let Ok(rows) = stmt.query_map(params![tmdb_id, season], |row| row.get(0)) {
+                    for r in rows.flatten() {
+                        set.insert(r);
+                    }
+                }
+            }
+        }
+        set
+    }
+
     pub fn get_favorites(&self) -> Result<Vec<FavoriteEntry>> {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(

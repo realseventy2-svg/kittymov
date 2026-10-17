@@ -84,25 +84,52 @@ pub fn render_metadata_panel(
         } else {
             "SERIES"
         };
-        let format_label = if media.media_type == "movie" {
-            "MOVIE"
+        let is_anime = media.genres.to_lowercase().contains("animation");
+        let format_badge_str = if is_anime {
+            if media.media_type == "movie" {
+                "ANIME MOVIE"
+            } else {
+                "ANIME SERIES"
+            }
+        } else if media.media_type == "movie" {
+            "FEATURE MOVIE"
         } else {
             "TV SERIES"
         };
+
+        let mut genre_spans = vec![Span::styled("Genres      ", Style::default().fg(Theme::ACCENT_CYAN))];
+        let genres_list: Vec<&str> = media
+            .genres
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if genres_list.is_empty() {
+            genre_spans.push(Span::styled("—", Style::default().fg(Theme::TEXT_MUTED)));
+        } else {
+            for g in genres_list {
+                genre_spans.push(Span::styled(
+                    format!("[{}] ", g),
+                    Style::default().fg(Theme::TEXT_BODY).bg(Theme::SURFACE_ALT),
+                ));
+            }
+        }
 
         let rows = vec![
             Line::from(vec![
                 Span::styled("Score       ", Style::default().fg(Theme::ACCENT_CYAN)),
                 Span::styled(
-                    format!("{} {:.1}", stars, media.rating),
-                    Style::default().fg(Theme::ACCENT_GOLD),
+                    format!("{} {:.1}/10", stars, media.rating),
+                    Style::default()
+                        .fg(Theme::ACCENT_GOLD)
+                        .add_modifier(Modifier::BOLD),
                 ),
             ]),
             Line::from(vec![
                 Span::styled("Saved       ", Style::default().fg(Theme::ACCENT_CYAN)),
                 Span::styled(
                     if is_bookmarked {
-                        "★ Bookmarked"
+                        "♥ Bookmarked in Saved"
                     } else {
                         "—"
                     },
@@ -142,14 +169,11 @@ pub fn render_metadata_panel(
                 "────────────────────────────────────────────────",
                 Style::default().fg(Theme::BORDER_MUTED),
             )),
-            Line::from(vec![
-                Span::styled("Genres      ", Style::default().fg(Theme::ACCENT_CYAN)),
-                Span::styled(&media.genres, Style::default().fg(Theme::TEXT_BODY)),
-            ]),
+            Line::from(genre_spans),
             Line::from(vec![
                 Span::styled("Format      ", Style::default().fg(Theme::ACCENT_CYAN)),
                 Span::styled(
-                    format_label,
+                    format_badge_str,
                     Style::default()
                         .fg(Theme::ACCENT_PINK)
                         .add_modifier(Modifier::BOLD),
