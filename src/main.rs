@@ -201,6 +201,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         crate::ui::poster::clear_kitty_graphics();
                         app.kitty_poster_dirty = true;
                         app.had_kitty_poster_drawn = false;
+                        app.had_resume_kitty_poster_drawn = false;
                         app.update_poster().await;
                     }
                     _ => {}

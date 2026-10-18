@@ -175,6 +175,7 @@ impl App {
             && self.settings_modal.is_none()
             && self.subtitle_modal.is_none()
             && self.error_dialog.is_none()
+            && self.resume_modal.is_none()
             && !self.show_help
             && (self.active_tab == ActiveTab::Movies
                 || self.active_tab == ActiveTab::Series
@@ -184,6 +185,28 @@ impl App {
     }
 
     pub fn render_kitty_poster_if_needed(&mut self, term_w: u16, term_h: u16) {
+        if self.resume_modal.is_some() {
+            if self.had_kitty_poster_drawn {
+                crate::ui::poster::clear_kitty_graphics();
+                self.had_kitty_poster_drawn = false;
+            }
+            if let Some(ref kp) = self.current_poster_kitty {
+                if !self.had_resume_kitty_poster_drawn || self.kitty_poster_dirty {
+                    let rect =
+                        crate::ui::poster::calculate_resume_modal_poster_screen_rect(term_w, term_h);
+                    crate::ui::poster::draw_kitty_graphics(kp, rect.x, rect.y);
+                    self.had_resume_kitty_poster_drawn = true;
+                    self.kitty_poster_dirty = false;
+                }
+            }
+            return;
+        }
+
+        if self.had_resume_kitty_poster_drawn {
+            crate::ui::poster::clear_kitty_graphics();
+            self.had_resume_kitty_poster_drawn = false;
+        }
+
         if self.is_catalog_visible_without_modals() {
             if let Some(ref kp) = self.current_poster_kitty {
                 if self.kitty_poster_dirty || !self.had_kitty_poster_drawn {

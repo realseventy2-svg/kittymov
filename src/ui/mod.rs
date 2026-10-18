@@ -54,7 +54,9 @@ pub fn render_ui(f: &mut Frame, app: &App) {
 
     // 0.6 If Resume / "Where to start?" Modal is active, render it
     if let Some(ref r_modal) = app.resume_modal {
-        render_resume_modal(f, size, r_modal, &app.cfg.preferred_provider);
+        let is_kitty_poster =
+            app.current_poster_kitty.is_some() && app.current_poster_text.is_none();
+        render_resume_modal(f, size, r_modal, &app.cfg.preferred_provider, is_kitty_poster);
         return;
     }
 

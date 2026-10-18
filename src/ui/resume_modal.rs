@@ -12,16 +12,12 @@ pub fn render_resume_modal(
     area: Rect,
     state: &ResumeModalState,
     preferred_provider: &str,
+    is_kitty_poster: bool,
 ) {
     f.render_widget(Clear, area);
 
-    let outer_block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Theme::BORDER))
-        .style(Style::default().bg(Theme::BG));
-
-    let inner_area = outer_block.inner(area);
-    f.render_widget(outer_block, area);
+    let bg_block = Block::default().style(Style::default().bg(Theme::BG));
+    f.render_widget(bg_block, area);
 
     // Layout: Top Status (3), Title & Subtitle (3), Filter Box (4), Options & Selection Body (Min 10), Command Footer (3)
     let chunks = Layout::default()
@@ -34,7 +30,7 @@ pub fn render_resume_modal(
             Constraint::Length(3), // Bottom command bar
         ])
         .margin(1)
-        .split(inner_area);
+        .split(area);
 
     let media_type_str = if state.item.media_type == "tv" {
         "series"
@@ -275,31 +271,39 @@ pub fn render_resume_modal(
     f.render_widget(list_p, body_cols[0]);
 
     // Right Column: Current Selection Panel
-    let right_block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Theme::BORDER_MUTED))
-        .title(Span::styled(
-            " Current Selection ",
-            Style::default()
-                .fg(Theme::ACCENT_GREEN)
-                .add_modifier(Modifier::BOLD),
-        ));
-
-    let right_inner = right_block.inner(body_cols[1]);
-    f.render_widget(right_block, body_cols[1]);
+    let (_target_w, target_h) = crate::ui::poster::calculate_poster_dimensions_for_panel(
+        (area.width.saturating_sub(2) as f32 * 0.38) as u16,
+        area.height.saturating_sub(2),
+    );
 
     let right_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Percentage(55), // Poster artwork
-            Constraint::Percentage(45), // Progress & details
+            Constraint::Length(2),        // "Current Selection" header
+            Constraint::Length(target_h), // Poster artwork
+            Constraint::Min(4),           // Progress & details
         ])
-        .split(right_inner);
+        .split(body_cols[1]);
 
-    // Poster artwork
+    // 1. Header
+    let header_p = Paragraph::new(vec![
+        Line::from(Span::styled(
+            "Current Selection",
+            Style::default()
+                .fg(Theme::ACCENT_GREEN)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+    ]);
+    f.render_widget(header_p, right_chunks[0]);
+
+    // 2. Poster artwork
     if let Some(ref text) = state.poster_text {
         let poster_p = Paragraph::new(text.clone()).alignment(Alignment::Center);
-        f.render_widget(poster_p, right_chunks[0]);
+        f.render_widget(poster_p, right_chunks[1]);
+    } else if is_kitty_poster {
+        let empty_p = Paragraph::new("");
+        f.render_widget(empty_p, right_chunks[1]);
     } else {
         let placeholder = Paragraph::new(vec![
             Line::from(""),
@@ -319,10 +323,10 @@ pub fn render_resume_modal(
             )),
         ])
         .alignment(Alignment::Center);
-        f.render_widget(placeholder, right_chunks[0]);
+        f.render_widget(placeholder, right_chunks[1]);
     }
 
-    // Progress details & selected option summary
+    // 3. Progress details & selected option summary
     let selected_opt = state.get_selected_option();
     let mut details_lines = Vec::new();
     details_lines.push(Line::from(""));
@@ -374,7 +378,7 @@ pub fn render_resume_modal(
     }
 
     let details_p = Paragraph::new(details_lines).alignment(Alignment::Center);
-    f.render_widget(details_p, right_chunks[1]);
+    f.render_widget(details_p, right_chunks[2]);
 
     // 5. Command Footer
     let footer_block = Block::default()

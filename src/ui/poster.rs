@@ -58,6 +58,53 @@ pub fn calculate_poster_screen_rect(term_w: u16, term_h: u16) -> ratatui::layout
     }
 }
 
+pub fn calculate_resume_modal_poster_screen_rect(term_w: u16, term_h: u16) -> ratatui::layout::Rect {
+    use ratatui::layout::{Constraint, Direction, Layout, Rect};
+
+    let area = Rect::new(0, 0, term_w, term_h);
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // Top status bar
+            Constraint::Length(3), // Title & Subtitle
+            Constraint::Length(4), // Filter input area
+            Constraint::Min(10),   // Options list + Current selection panel
+            Constraint::Length(3), // Bottom command bar
+        ])
+        .margin(1)
+        .split(area);
+
+    let body_cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(66), Constraint::Percentage(34)])
+        .split(chunks[3]);
+
+    let (target_w, target_h) = calculate_poster_dimensions_for_panel(
+        (term_w.saturating_sub(2) as f32 * 0.38) as u16,
+        term_h.saturating_sub(2),
+    );
+
+    let right_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(2),        // "Current Selection" header
+            Constraint::Length(target_h), // Poster artwork
+            Constraint::Min(4),           // Progress & details
+        ])
+        .split(body_cols[1]);
+
+    let poster_chunk = right_chunks[1];
+    let x = poster_chunk.x + (poster_chunk.width.saturating_sub(target_w)) / 2;
+    let y = poster_chunk.y;
+
+    Rect {
+        x,
+        y,
+        width: target_w,
+        height: target_h,
+    }
+}
+
 pub fn is_kitty_graphics_supported() -> bool {
     if std::env::var("KITTY_WINDOW_ID").is_ok() || std::env::var("KITTY_PID").is_ok() {
         return true;
@@ -350,6 +397,16 @@ mod tests {
         assert!(rect.height >= 10);
         assert!(rect.x >= 1);
         assert!(rect.y >= 1);
+    }
+
+    #[test]
+    fn test_calculate_resume_modal_poster_screen_rect() {
+        let rect = calculate_resume_modal_poster_screen_rect(120, 40);
+        assert!(rect.width >= 16);
+        assert!(rect.height >= 10);
+        // The right column starts at 66% of terminal (120 * 0.66 ~ 79)
+        assert!(rect.x > 70);
+        assert!(rect.y >= 10);
     }
 
     #[test]
