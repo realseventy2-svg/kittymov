@@ -159,7 +159,7 @@ impl Database {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, tmdb_id, media_type, title, year, poster_path, season, episode, ep_title, progress_seconds, duration_seconds, last_watched 
-             FROM history ORDER BY last_watched DESC LIMIT ?1"
+             FROM history ORDER BY last_watched DESC, id DESC LIMIT ?1"
         )?;
 
         let rows = stmt.query_map([limit as i64], |row| {
@@ -189,6 +189,90 @@ impl Database {
     pub fn get_latest_watch(&self) -> Result<Option<HistoryEntry>> {
         let list = self.get_history(1)?;
         Ok(list.into_iter().next())
+    }
+
+    pub fn get_watch_progress(
+        &self,
+        tmdb_id: i64,
+        media_type: &str,
+        season: Option<i32>,
+        episode: Option<i32>,
+    ) -> Result<Option<HistoryEntry>> {
+        let conn = self.conn()?;
+        if let (Some(s), Some(e)) = (season, episode) {
+            let mut stmt = conn.prepare(
+                "SELECT id, tmdb_id, media_type, title, year, poster_path, season, episode, ep_title, progress_seconds, duration_seconds, last_watched
+                 FROM history WHERE tmdb_id = ?1 AND media_type = ?2 AND season = ?3 AND episode = ?4
+                 LIMIT 1",
+            )?;
+            let mut rows = stmt.query_map(params![tmdb_id, media_type, s, e], |row| {
+                Ok(HistoryEntry {
+                    id: row.get(0)?,
+                    tmdb_id: row.get(1)?,
+                    media_type: row.get(2)?,
+                    title: row.get(3)?,
+                    year: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
+                    poster_path: row.get::<_, Option<String>>(5)?.unwrap_or_default(),
+                    season: row.get(6)?,
+                    episode: row.get(7)?,
+                    ep_title: row.get(8)?,
+                    progress_seconds: row.get(9)?,
+                    duration_seconds: row.get(10)?,
+                    last_watched: row.get(11)?,
+                })
+            })?;
+            if let Some(r) = rows.next() {
+                return Ok(Some(r?));
+            }
+        } else {
+            let mut stmt = conn.prepare(
+                "SELECT id, tmdb_id, media_type, title, year, poster_path, season, episode, ep_title, progress_seconds, duration_seconds, last_watched
+                 FROM history WHERE tmdb_id = ?1 AND media_type = ?2
+                 ORDER BY last_watched DESC, id DESC LIMIT 1",
+            )?;
+            let mut rows = stmt.query_map(params![tmdb_id, media_type], |row| {
+                Ok(HistoryEntry {
+                    id: row.get(0)?,
+                    tmdb_id: row.get(1)?,
+                    media_type: row.get(2)?,
+                    title: row.get(3)?,
+                    year: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
+                    poster_path: row.get::<_, Option<String>>(5)?.unwrap_or_default(),
+                    season: row.get(6)?,
+                    episode: row.get(7)?,
+                    ep_title: row.get(8)?,
+                    progress_seconds: row.get(9)?,
+                    duration_seconds: row.get(10)?,
+                    last_watched: row.get(11)?,
+                })
+            })?;
+            if let Some(r) = rows.next() {
+                return Ok(Some(r?));
+            }
+        }
+        Ok(None)
+    }
+
+    pub fn clear_watch_progress(
+        &self,
+        tmdb_id: i64,
+        media_type: &str,
+        season: Option<i32>,
+        episode: Option<i32>,
+    ) -> Result<()> {
+        let conn = self.conn()?;
+        if let (Some(s), Some(e)) = (season, episode) {
+            conn.execute(
+                "DELETE FROM history WHERE tmdb_id = ?1 AND media_type = ?2 AND season = ?3 AND episode = ?4",
+                params![tmdb_id, media_type, s, e],
+            )?;
+        } else {
+            conn.execute(
+                "DELETE FROM history WHERE tmdb_id = ?1 AND media_type = ?2",
+                params![tmdb_id, media_type],
+            )?;
+        }
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]

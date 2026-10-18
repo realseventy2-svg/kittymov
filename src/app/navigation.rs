@@ -242,12 +242,56 @@ impl App {
             return;
         }
 
-        if self.episode_modal.is_some() {
+        if let Some(ref modal) = self.episode_modal {
+            if let Some(ep) = modal.episodes.get(modal.selected_episode_idx) {
+                let season_num = modal
+                    .seasons
+                    .get(modal.selected_season_idx)
+                    .map(|s| s.season_number)
+                    .unwrap_or(1);
+                let ep_num = ep.episode_number;
+                if let Ok(Some(history)) = self.db.get_watch_progress(
+                    modal.series.tmdb_id,
+                    "tv",
+                    Some(season_num),
+                    Some(ep_num),
+                ) {
+                    if history.progress_seconds > 10 {
+                        let series = modal.series.clone();
+                        self.open_resume_modal(
+                            series,
+                            Some(season_num),
+                            Some(ep_num),
+                            history,
+                        );
+                        return;
+                    }
+                }
+            }
             self.open_provider_modal_for_selected();
             return;
         }
 
         if let Some(item) = self.current_items.get(self.selected_index).cloned() {
+            if let Ok(Some(history)) = self.db.get_watch_progress(
+                item.tmdb_id,
+                &item.media_type,
+                None,
+                None,
+            ) {
+                if history.progress_seconds > 10 {
+                    let s = history.season;
+                    let e = history.episode;
+                    self.open_resume_modal(
+                        item,
+                        s,
+                        e,
+                        history,
+                    );
+                    return;
+                }
+            }
+
             if item.media_type == "tv" {
                 self.open_episode_modal(item).await;
             } else {
@@ -279,6 +323,23 @@ impl App {
         };
 
         if let Some((tmdb_id, title, year, poster, season_num, ep_num, series)) = ep_play_info {
+            if let Ok(Some(history)) = self.db.get_watch_progress(
+                tmdb_id,
+                "tv",
+                Some(season_num),
+                Some(ep_num),
+            ) {
+                if history.progress_seconds > 10 {
+                    self.open_resume_modal(
+                        series,
+                        Some(season_num),
+                        Some(ep_num),
+                        history,
+                    );
+                    return;
+                }
+            }
+
             let is_anime = series.genres.to_lowercase().contains("animation");
             let req = MediaRequest {
                 tmdb_id,
@@ -293,12 +354,31 @@ impl App {
             };
 
             let choice = self.cfg.preferred_provider.clone();
-            self.start_playback_loading(req, poster, choice, None, None, Some(series))
+            self.start_playback_loading(req, poster, choice, None, None, Some(series), None)
                 .await;
             return;
         }
 
         if let Some(item) = self.current_items.get(self.selected_index).cloned() {
+            if let Ok(Some(history)) = self.db.get_watch_progress(
+                item.tmdb_id,
+                &item.media_type,
+                None,
+                None,
+            ) {
+                if history.progress_seconds > 10 {
+                    let s = history.season;
+                    let e = history.episode;
+                    self.open_resume_modal(
+                        item,
+                        s,
+                        e,
+                        history,
+                    );
+                    return;
+                }
+            }
+
             if item.media_type == "tv" {
                 self.open_episode_modal(item).await;
             } else {
@@ -322,6 +402,7 @@ impl App {
                     None,
                     None,
                     Some(item),
+                    None,
                 )
                 .await;
             }

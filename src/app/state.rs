@@ -720,6 +720,7 @@ pub struct PlaybackLoadingState {
     pub spinner_idx: usize,
     pub request: MediaRequest,
     pub poster_path: String,
+    pub start_sec: Option<i64>,
 }
 
 #[derive(Debug)]
@@ -767,4 +768,88 @@ pub struct EpisodeModalState {
     pub episodes: Vec<TvEpisode>,
     pub selected_episode_idx: usize,
     pub all_season_episodes: Option<HashMap<i32, Vec<TvEpisode>>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResumeOptionKind {
+    Resume,
+    Restart,
+    NextEpisode,
+    PickSeasonEpisode,
+    SwitchProvider,
+    PurgeEpisodeCache,
+    PurgeTitleCache,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResumeOption {
+    pub kind: ResumeOptionKind,
+    pub label: String,
+    pub sublabel: String,
+    pub description: String,
+    pub icon: &'static str,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResumeModalState {
+    pub item: MediaItem,
+    pub season: Option<i32>,
+    pub episode: Option<i32>,
+    pub progress_seconds: i64,
+    pub duration_seconds: i64,
+    pub options: Vec<ResumeOption>,
+    pub selected_idx: usize,
+    pub filter_query: String,
+    pub is_filtering: bool,
+    pub poster_text: Option<ratatui::text::Text<'static>>,
+}
+
+impl ResumeModalState {
+    pub fn filtered_indices(&self) -> Vec<usize> {
+        if self.filter_query.trim().is_empty() {
+            (0..self.options.len()).collect()
+        } else {
+            let q = self.filter_query.to_lowercase();
+            (0..self.options.len())
+                .filter(|&i| {
+                    let opt = &self.options[i];
+                    opt.label.to_lowercase().contains(&q)
+                        || opt.sublabel.to_lowercase().contains(&q)
+                        || opt.description.to_lowercase().contains(&q)
+                })
+                .collect()
+        }
+    }
+
+    pub fn selected_filtered_index(&self) -> usize {
+        let indices = self.filtered_indices();
+        if indices.is_empty() {
+            0
+        } else if self.selected_idx >= indices.len() {
+            indices.len() - 1
+        } else {
+            self.selected_idx
+        }
+    }
+
+    pub fn get_selected_option(&self) -> Option<&ResumeOption> {
+        let indices = self.filtered_indices();
+        indices
+            .get(self.selected_filtered_index())
+            .and_then(|&idx| self.options.get(idx))
+    }
+}
+
+pub fn format_time(sec: i64) -> String {
+    if sec <= 0 {
+        return "0:00".to_string();
+    }
+    let h = sec / 3600;
+    let m = (sec % 3600) / 60;
+    let s = sec % 60;
+    if h > 0 {
+        format!("{}:{:02}:{:02}", h, m, s)
+    } else {
+        format!("{}:{:02}", m, s)
+    }
 }

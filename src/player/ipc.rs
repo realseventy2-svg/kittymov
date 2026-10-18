@@ -40,6 +40,7 @@ impl MpvController {
         title: &str,
         cfg: &Config,
         idle: bool,
+        start_sec: Option<i64>,
     ) -> Result<(), String> {
         // Clean up socket file if left over
         if self.ipc_path.exists() {
@@ -59,6 +60,11 @@ impl MpvController {
         if idle {
             cmd.arg("--idle=yes");
             cmd.arg("--force-window=yes");
+        }
+        if let Some(sec) = start_sec {
+            if sec > 0 {
+                cmd.arg(format!("--start={}", sec));
+            }
         }
         let quality_tag = stream.quality.as_deref().unwrap_or("Auto");
         let title_with_provider = format!(

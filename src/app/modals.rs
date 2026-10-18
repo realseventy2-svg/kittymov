@@ -6,7 +6,7 @@ use crate::providers::{MediaRequest, ProviderManager};
 use super::mod_utils::cycle_list;
 use super::state::{
     EpisodeModalState, ProviderModalCategory, ProviderModalPane, ProviderSelectModalState,
-    SubtitleSelectModalState,
+    ResumeModalState, ResumeOption, ResumeOptionKind, SubtitleSelectModalState,
 };
 use super::App;
 
@@ -237,8 +237,16 @@ impl App {
             let req = modal.request;
             let poster = modal.poster_path;
 
-            self.start_playback_loading(req, poster, choice, quality_choice, sub_choice, None)
-                .await;
+            self.start_playback_loading(
+                req,
+                poster,
+                choice,
+                quality_choice,
+                sub_choice,
+                None,
+                None,
+            )
+            .await;
         }
     }
 
@@ -482,5 +490,288 @@ impl App {
             self.status_message = "Audio Mode: SUB (Original Audio + Subtitles)".to_string();
         }
         let _ = self.cfg.save();
+    }
+
+    pub fn open_resume_modal(
+        &mut self,
+        item: MediaItem,
+        season: Option<i32>,
+        episode: Option<i32>,
+        history: crate::storage::db::HistoryEntry,
+    ) {
+        let is_tv = item.media_type == "tv";
+        let s = history.season.unwrap_or(season.unwrap_or(1));
+        let e = history.episode.unwrap_or(episode.unwrap_or(1));
+        let time_str = crate::app::state::format_time(history.progress_seconds);
+        let dur_str = if history.duration_seconds > 0 {
+            format!(" / {}", crate::app::state::format_time(history.duration_seconds))
+        } else {
+            String::new()
+        };
+
+        let mut options = Vec::new();
+
+        if is_tv {
+            // 1. Resume S(s)E(e)
+            options.push(ResumeOption {
+                kind: ResumeOptionKind::Resume,
+                label: format!("Resume S{:02}E{:02}", s, e),
+                sublabel: format!("Continue from {}{}", time_str, dur_str),
+                description: "Resume playback exactly where you left off".to_string(),
+                icon: "▶",
+            });
+
+            // 2. Restart S(s)E(e)
+            options.push(ResumeOption {
+                kind: ResumeOptionKind::Restart,
+                label: format!("Restart S{:02}E{:02}", s, e),
+                sublabel: "Start the current episode from the beginning".to_string(),
+                description: "Play episode from 0:00 without skipping".to_string(),
+                icon: "↺",
+            });
+
+            // 3. Next episode S(s)E(e+1)
+            options.push(ResumeOption {
+                kind: ResumeOptionKind::NextEpisode,
+                label: format!("Next episode  S{:02}E{:02}", s, e + 1),
+                sublabel: "Advance to the next released episode".to_string(),
+                description: "Skip to next episode in the series".to_string(),
+                icon: "⏭",
+            });
+
+            // 4. Pick season & episode...
+            options.push(ResumeOption {
+                kind: ResumeOptionKind::PickSeasonEpisode,
+                label: "Pick season & episode...".to_string(),
+                sublabel: "Choose manually from metadata".to_string(),
+                description: "Browse all seasons and episodes for this series".to_string(),
+                icon: "≡",
+            });
+
+            // 5. Switch provider
+            options.push(ResumeOption {
+                kind: ResumeOptionKind::SwitchProvider,
+                label: format!("Switch provider · {}", self.cfg.preferred_provider),
+                sublabel: "Saved for this title · overrides history provider on resume".to_string(),
+                description: "Choose VidLink, LookMovie, HiAnime, or server streams".to_string(),
+                icon: "⇄",
+            });
+
+            // 6. Purge episode cache
+            options.push(ResumeOption {
+                kind: ResumeOptionKind::PurgeEpisodeCache,
+                label: format!("Purge episode cache · S{:02}E{:02}", s, e),
+                sublabel: "Drop resolved stream + source inventory for this episode only".to_string(),
+                description: "Clear saved progress and cache for this episode".to_string(),
+                icon: "⌧",
+            });
+
+            // 7. Purge title cache
+            options.push(ResumeOption {
+                kind: ResumeOptionKind::PurgeTitleCache,
+                label: "Purge title cache".to_string(),
+                sublabel: "Drop cached resolves for every watched episode of this title".to_string(),
+                description: "Reset all watch progress and history for this title".to_string(),
+                icon: "⌧",
+            });
+        } else {
+            // 1. Resume Movie
+            options.push(ResumeOption {
+                kind: ResumeOptionKind::Resume,
+                label: format!("Resume {}", item.title),
+                sublabel: format!("Continue from {}{}", time_str, dur_str),
+                description: "Resume movie playback exactly where you left off".to_string(),
+                icon: "▶",
+            });
+
+            // 2. Restart Movie
+            options.push(ResumeOption {
+                kind: ResumeOptionKind::Restart,
+                label: format!("Restart {}", item.title),
+                sublabel: "Start from the beginning".to_string(),
+                description: "Play movie from 0:00 without skipping".to_string(),
+                icon: "↺",
+            });
+
+            // 3. Switch provider
+            options.push(ResumeOption {
+                kind: ResumeOptionKind::SwitchProvider,
+                label: format!("Switch provider · {}", self.cfg.preferred_provider),
+                sublabel: "Saved for this title · overrides history provider on resume".to_string(),
+                description: "Choose VidLink, LookMovie, or server streams".to_string(),
+                icon: "⇄",
+            });
+
+            // 4. Purge title cache
+            options.push(ResumeOption {
+                kind: ResumeOptionKind::PurgeTitleCache,
+                label: "Purge title cache".to_string(),
+                sublabel: "Drop cached resolves and watch progress for this title".to_string(),
+                description: "Reset watch progress and cache for this title".to_string(),
+                icon: "⌧",
+            });
+        }
+
+        self.resume_modal = Some(ResumeModalState {
+            item,
+            season: Some(s),
+            episode: Some(e),
+            progress_seconds: history.progress_seconds,
+            duration_seconds: history.duration_seconds,
+            options,
+            selected_idx: 0,
+            filter_query: String::new(),
+            is_filtering: false,
+            poster_text: self.current_poster_text.clone(),
+        });
+    }
+
+    pub async fn handle_resume_action(&mut self, kind: ResumeOptionKind) {
+        let state = match self.resume_modal.take() {
+            Some(s) => s,
+            None => return,
+        };
+
+        match kind {
+            ResumeOptionKind::Resume => {
+                let is_anime = state.item.genres.to_lowercase().contains("animation");
+                let is_tv = state.item.media_type == "tv";
+                let req = MediaRequest {
+                    tmdb_id: state.item.tmdb_id,
+                    media_type: state.item.media_type.clone(),
+                    season: if is_tv { state.season } else { None },
+                    episode: if is_tv { state.episode } else { None },
+                    title: state.item.title.clone(),
+                    year: Some(state.item.year.clone()),
+                    genres: Some(state.item.genres.clone()),
+                    is_anime,
+                    audio_mode: Some(self.cfg.audio_mode.clone()),
+                };
+                let choice = self.cfg.preferred_provider.clone();
+                self.start_playback_loading(
+                    req,
+                    state.item.poster_path.clone(),
+                    choice,
+                    None,
+                    None,
+                    Some(state.item),
+                    Some(state.progress_seconds),
+                )
+                .await;
+            }
+            ResumeOptionKind::Restart => {
+                let is_anime = state.item.genres.to_lowercase().contains("animation");
+                let is_tv = state.item.media_type == "tv";
+                let req = MediaRequest {
+                    tmdb_id: state.item.tmdb_id,
+                    media_type: state.item.media_type.clone(),
+                    season: if is_tv { state.season } else { None },
+                    episode: if is_tv { state.episode } else { None },
+                    title: state.item.title.clone(),
+                    year: Some(state.item.year.clone()),
+                    genres: Some(state.item.genres.clone()),
+                    is_anime,
+                    audio_mode: Some(self.cfg.audio_mode.clone()),
+                };
+                let choice = self.cfg.preferred_provider.clone();
+                self.start_playback_loading(
+                    req,
+                    state.item.poster_path.clone(),
+                    choice,
+                    None,
+                    None,
+                    Some(state.item),
+                    Some(0),
+                )
+                .await;
+            }
+            ResumeOptionKind::NextEpisode => {
+                let is_anime = state.item.genres.to_lowercase().contains("animation");
+                let next_ep = state.episode.unwrap_or(1) + 1;
+                let req = MediaRequest {
+                    tmdb_id: state.item.tmdb_id,
+                    media_type: "tv".to_string(),
+                    season: state.season,
+                    episode: Some(next_ep),
+                    title: state.item.title.clone(),
+                    year: Some(state.item.year.clone()),
+                    genres: Some(state.item.genres.clone()),
+                    is_anime,
+                    audio_mode: Some(self.cfg.audio_mode.clone()),
+                };
+                let choice = self.cfg.preferred_provider.clone();
+                self.start_playback_loading(
+                    req,
+                    state.item.poster_path.clone(),
+                    choice,
+                    None,
+                    None,
+                    Some(state.item),
+                    None,
+                )
+                .await;
+            }
+            ResumeOptionKind::PickSeasonEpisode => {
+                self.open_episode_modal(state.item).await;
+            }
+            ResumeOptionKind::SwitchProvider => {
+                let is_tv = state.item.media_type == "tv";
+                let target_title = if is_tv {
+                    format!(
+                        "{} S{:02}E{:02}",
+                        state.item.title,
+                        state.season.unwrap_or(1),
+                        state.episode.unwrap_or(1)
+                    )
+                } else {
+                    state.item.title.clone()
+                };
+                let is_anime = state.item.genres.to_lowercase().contains("animation");
+                let req = MediaRequest {
+                    tmdb_id: state.item.tmdb_id,
+                    media_type: state.item.media_type.clone(),
+                    season: if is_tv { state.season } else { None },
+                    episode: if is_tv { state.episode } else { None },
+                    title: state.item.title.clone(),
+                    year: Some(state.item.year.clone()),
+                    genres: Some(state.item.genres.clone()),
+                    is_anime,
+                    audio_mode: Some(self.cfg.audio_mode.clone()),
+                };
+                let p_modal = ProviderSelectModalState::new(
+                    target_title,
+                    req,
+                    state.item.poster_path.clone(),
+                    &self.cfg.preferred_provider,
+                    &self.cfg.sub_language,
+                    &self.cfg.preferred_quality,
+                );
+                self.provider_modal = Some(p_modal);
+            }
+            ResumeOptionKind::PurgeEpisodeCache => {
+                let s = state.season;
+                let e = state.episode;
+                let _ = self.db.clear_watch_progress(
+                    state.item.tmdb_id,
+                    "tv",
+                    s,
+                    e,
+                );
+                self.status_message = format!(
+                    "Purged watch progress for S{:02}E{:02}",
+                    s.unwrap_or(1),
+                    e.unwrap_or(1)
+                );
+            }
+            ResumeOptionKind::PurgeTitleCache => {
+                let _ = self.db.clear_watch_progress(
+                    state.item.tmdb_id,
+                    &state.item.media_type,
+                    None,
+                    None,
+                );
+                self.status_message = format!("Purged all watch history for '{}'", state.item.title);
+            }
+        }
     }
 }

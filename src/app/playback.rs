@@ -419,6 +419,7 @@ pub async fn prepare_playback_subtitles(
 }
 
 impl App {
+    #[allow(clippy::too_many_arguments)]
     pub async fn start_playback_loading(
         &mut self,
         mut req: MediaRequest,
@@ -427,6 +428,7 @@ impl App {
         quality_choice: Option<String>,
         subtitle_choice: Option<SubtitleTrackOption>,
         catalog_item: Option<MediaItem>,
+        start_sec: Option<i64>,
     ) {
         if req.genres.is_none() {
             if let Some(ref item) = catalog_item {
@@ -549,6 +551,7 @@ impl App {
             spinner_idx: 0,
             request: req.clone(),
             poster_path: poster_path.clone(),
+            start_sec,
         });
 
         let (tx, rx) = mpsc::unbounded_channel();
@@ -739,7 +742,7 @@ impl App {
                 "vixsrc".to_string()
             };
             self.cancel_playback_loading();
-            self.start_playback_loading(req, poster, next_prov, None, None, None)
+            self.start_playback_loading(req, poster, next_prov, None, None, None, None)
                 .await;
         }
     }
@@ -750,6 +753,7 @@ impl App {
             .as_ref()
             .map(|l| l.poster_path.clone())
             .unwrap_or_default();
+        let start_sec = self.playback_loading.as_ref().and_then(|l| l.start_sec);
         self.playback_loading = None;
 
         let is_tv = stream.request.media_type == "tv"
@@ -768,10 +772,11 @@ impl App {
                 season,
                 episode,
                 stream.clone(),
+                start_sec,
             )
             .await;
         } else {
-            self.launch_mpv_session(stream, title).await;
+            self.launch_mpv_session(stream, title, start_sec).await;
         }
     }
 
@@ -887,7 +892,7 @@ impl App {
                     0,
                 );
 
-                self.launch_mpv_session(&stream, title).await;
+                self.launch_mpv_session(&stream, title, None).await;
             }
             Err(e) => {
                 self.status_message = format!("Stream error ({}): {}", display_name, e);
@@ -1033,6 +1038,7 @@ impl App {
                     season,
                     episode,
                     stream,
+                    None,
                 )
                 .await;
             }
@@ -1042,15 +1048,61 @@ impl App {
         }
     }
 
-    async fn launch_mpv_session(&mut self, stream: &StreamCandidate, title: &str) {
+    async fn launch_mpv_session(
+        &mut self,
+        stream: &StreamCandidate,
+        title: &str,
+        start_sec: Option<i64>,
+    ) {
         crate::ui::poster::clear_kitty_graphics();
         crossterm::terminal::disable_raw_mode().ok();
         crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen).ok();
 
         let mut controller = MpvController::new();
-        let result = match controller.start_player(stream, title, &self.cfg, false) {
+        let result = match controller.start_player(stream, title, &self.cfg, false, start_sec) {
             Ok(()) => {
+                let (status_tx, mut status_rx) = mpsc::channel(32);
+                let mut last_pos: f64 = start_sec.unwrap_or(0) as f64;
+                let mut last_dur: f64 = 0.0;
+
+                if let Ok(socket) = controller.wait_for_socket(Duration::from_secs(4)).await {
+                    controller.monitor_ipc(socket, status_tx);
+
+                    while let Some(status) = status_rx.recv().await {
+                        match status {
+                            PlaybackStatus::Playing { pos, duration } => {
+                                last_pos = pos;
+                                if duration > 0.0 {
+                                    last_dur = duration;
+                                }
+                            }
+                            PlaybackStatus::EofReached => {
+                                last_pos = 0.0;
+                                break;
+                            }
+                            PlaybackStatus::UserQuit => {
+                                break;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+
                 let _ = controller.wait_async().await;
+
+                let _ = self.db.record_watch(
+                    stream.request.tmdb_id,
+                    &stream.request.media_type,
+                    title,
+                    stream.request.year.as_deref().unwrap_or(""),
+                    "",
+                    stream.request.season,
+                    stream.request.episode,
+                    None,
+                    last_pos as i64,
+                    last_dur as i64,
+                );
+
                 Ok(())
             }
             Err(e) => Err(e),
@@ -1081,6 +1133,7 @@ impl App {
         mut current_season: i32,
         mut current_episode: i32,
         initial_stream: StreamCandidate,
+        start_sec: Option<i64>,
     ) {
         crate::ui::poster::clear_kitty_graphics();
         crossterm::terminal::disable_raw_mode().ok();
@@ -1093,9 +1146,11 @@ impl App {
             format!("{} S{:02}E{:02}", title, current_season, current_episode)
         };
 
-        let result = match controller.start_player(&initial_stream, &display_title, &self.cfg, true) {
+        let result = match controller.start_player(&initial_stream, &display_title, &self.cfg, true, start_sec) {
             Ok(()) => {
                 let (status_tx, mut status_rx) = mpsc::channel(32);
+                let mut last_pos: f64 = start_sec.unwrap_or(0) as f64;
+                let mut last_dur: f64 = 0.0;
 
                 if let Ok(socket) = controller.wait_for_socket(Duration::from_secs(4)).await {
                     controller.monitor_ipc(socket, status_tx);
@@ -1105,6 +1160,10 @@ impl App {
                     while let Some(status) = status_rx.recv().await {
                         match status {
                             PlaybackStatus::Playing { pos, duration } => {
+                                last_pos = pos;
+                                if duration > 0.0 {
+                                    last_dur = duration;
+                                }
                                 if self.cfg.auto_play_next
                                     && prefetch_task.is_none()
                                     && (duration > 0.0 && pos / duration >= 0.8 || pos >= 1200.0)
@@ -1128,6 +1187,21 @@ impl App {
                                 }
                             }
                             PlaybackStatus::EofReached => {
+                                let _ = self.db.record_watch(
+                                    tmdb_id,
+                                    "tv",
+                                    title,
+                                    year,
+                                    poster_path,
+                                    Some(current_season),
+                                    Some(current_episode),
+                                    None,
+                                    0,
+                                    last_dur as i64,
+                                );
+                                last_pos = 0.0;
+                                last_dur = 0.0;
+
                                 if self.cfg.auto_play_next {
                                     // 1. Await prefetch if already running, or resolve next episode on demand
                                     let mut next_cand_res = if let Some(task) = prefetch_task.take() {
@@ -1311,6 +1385,21 @@ impl App {
                     }
                 }
                 let _ = controller.wait_async().await;
+
+                // Save watch progress on exit
+                let _ = self.db.record_watch(
+                    tmdb_id,
+                    "tv",
+                    title,
+                    year,
+                    poster_path,
+                    Some(current_season),
+                    Some(current_episode),
+                    None,
+                    last_pos as i64,
+                    last_dur as i64,
+                );
+
                 Ok(())
             }
             Err(e) => Err(e),

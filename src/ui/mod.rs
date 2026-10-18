@@ -7,6 +7,7 @@ pub mod loading_screen;
 pub mod metadata_panel;
 pub mod poster;
 pub mod provider_modal;
+pub mod resume_modal;
 pub mod settings_modal;
 pub mod setup_wizard;
 pub mod subtitle_modal;
@@ -23,6 +24,7 @@ use self::error_dialog::render_error_dialog;
 use self::loading_screen::render_loading_screen;
 use self::metadata_panel::render_metadata_panel;
 use self::provider_modal::render_provider_modal;
+use self::resume_modal::render_resume_modal;
 use self::settings_modal::render_settings_modal;
 use self::setup_wizard::render_setup_wizard;
 use self::subtitle_modal::render_subtitle_modal;
@@ -47,6 +49,12 @@ pub fn render_ui(f: &mut Frame, app: &App) {
     // 0.5 If Tracks / Provider Selector Screen is active, render full-screen tracks view
     if let Some(ref p_modal) = app.provider_modal {
         render_provider_modal(f, size, p_modal);
+        return;
+    }
+
+    // 0.6 If Resume / "Where to start?" Modal is active, render it
+    if let Some(ref r_modal) = app.resume_modal {
+        render_resume_modal(f, size, r_modal, &app.cfg.preferred_provider);
         return;
     }
 

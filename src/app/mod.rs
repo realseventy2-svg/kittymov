@@ -43,6 +43,7 @@ pub struct App {
     pub provider_modal: Option<ProviderSelectModalState>,
     pub subtitle_modal: Option<SubtitleSelectModalState>,
     pub settings_modal: Option<SettingsModalState>,
+    pub resume_modal: Option<ResumeModalState>,
     pub playback_loading: Option<PlaybackLoadingState>,
     pub loading_rx: Option<tokio::sync::mpsc::UnboundedReceiver<LoadingProgress>>,
     pub loading_task: Option<tokio::task::JoinHandle<()>>,
@@ -79,6 +80,7 @@ impl App {
             provider_modal: None,
             subtitle_modal: None,
             settings_modal: None,
+            resume_modal: None,
             playback_loading: None,
             loading_rx: None,
             loading_task: None,
@@ -496,6 +498,7 @@ mod tests {
             spinner_idx: 0,
             request: req,
             poster_path: String::new(),
+            start_sec: None,
         });
 
         assert_eq!(app.playback_loading.as_ref().unwrap().spinner_idx, 0);
@@ -632,5 +635,163 @@ mod tests {
         // Auto-resume should NOT have launched playback
         assert!(app.playback_loading.is_none());
         assert!(app.setup_wizard.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_resume_modal_tv_show_options_and_filtering() {
+        let cfg = Config::default();
+        let db = Database::in_memory().unwrap();
+        let mut app = App::new(cfg, db);
+
+        let series = MediaItem {
+            tmdb_id: 3061046,
+            title: "Steven Universe".to_string(),
+            media_type: "tv".to_string(),
+            year: "2013".to_string(),
+            poster_path: "/steven.jpg".to_string(),
+            rating: 8.5,
+            overview: "Gems".to_string(),
+            genres: "Animation, Action".to_string(),
+            duration_str: "24m".to_string(),
+            status: "Returning Series".to_string(),
+            episodes_count: Some(160),
+        };
+
+        let history = crate::storage::db::HistoryEntry {
+            id: 1,
+            tmdb_id: 3061046,
+            media_type: "tv".to_string(),
+            title: "Steven Universe".to_string(),
+            year: "2013".to_string(),
+            poster_path: "/steven.jpg".to_string(),
+            season: Some(2),
+            episode: Some(20),
+            ep_title: Some("Log Date 7 15 2".to_string()),
+            progress_seconds: 348, // 5:48
+            duration_seconds: 660, // 11:00
+            last_watched: "2026-10-18 20:00:00".to_string(),
+        };
+
+        app.open_resume_modal(series.clone(), Some(2), Some(20), history);
+        assert!(app.resume_modal.is_some());
+
+        let modal = app.resume_modal.as_ref().unwrap();
+        assert_eq!(modal.options.len(), 7);
+        assert_eq!(modal.options[0].kind, ResumeOptionKind::Resume);
+        assert!(modal.options[0].label.contains("Resume S02E20"));
+        assert!(modal.options[0].sublabel.contains("5:48 / 11:00"));
+
+        assert_eq!(modal.options[1].kind, ResumeOptionKind::Restart);
+        assert!(modal.options[1].label.contains("Restart S02E20"));
+
+        assert_eq!(modal.options[2].kind, ResumeOptionKind::NextEpisode);
+        assert!(modal.options[2].label.contains("Next episode  S02E21"));
+
+        assert_eq!(modal.options[3].kind, ResumeOptionKind::PickSeasonEpisode);
+        assert_eq!(modal.options[4].kind, ResumeOptionKind::SwitchProvider);
+        assert_eq!(modal.options[5].kind, ResumeOptionKind::PurgeEpisodeCache);
+        assert_eq!(modal.options[6].kind, ResumeOptionKind::PurgeTitleCache);
+
+        // Test filtering
+        let mut filtered_modal = modal.clone();
+        filtered_modal.filter_query = "restart".to_string();
+        let indices = filtered_modal.filtered_indices();
+        assert_eq!(indices.len(), 1);
+        assert_eq!(
+            filtered_modal.options[indices[0]].kind,
+            ResumeOptionKind::Restart
+        );
+
+        filtered_modal.filter_query = "cache".to_string();
+        let cache_indices = filtered_modal.filtered_indices();
+        assert_eq!(cache_indices.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_watch_progress_db_queries_and_purging() {
+        let db = Database::in_memory().unwrap();
+
+        // 1. Record watch for movie
+        db.record_watch(
+            550,
+            "movie",
+            "Fight Club",
+            "1999",
+            "/fight.jpg",
+            None,
+            None,
+            None,
+            4200,
+            8340,
+        )
+        .unwrap();
+
+        // 2. Query progress
+        let prog = db.get_watch_progress(550, "movie", None, None).unwrap();
+        assert!(prog.is_some());
+        let entry = prog.unwrap();
+        assert_eq!(entry.title, "Fight Club");
+        assert_eq!(entry.progress_seconds, 4200);
+        assert_eq!(entry.duration_seconds, 8340);
+
+        // 3. Purge watch progress
+        db.clear_watch_progress(550, "movie", None, None).unwrap();
+        let cleared = db.get_watch_progress(550, "movie", None, None).unwrap();
+        assert!(cleared.is_none());
+
+        // 4. Record watch for TV episodes
+        db.record_watch(
+            3061046,
+            "tv",
+            "Steven Universe",
+            "2013",
+            "",
+            Some(1),
+            Some(1),
+            None,
+            300,
+            660,
+        )
+        .unwrap();
+
+        db.record_watch(
+            3061046,
+            "tv",
+            "Steven Universe",
+            "2013",
+            "",
+            Some(2),
+            Some(20),
+            None,
+            348,
+            660,
+        )
+        .unwrap();
+
+        // Query specific episode
+        let ep20 = db
+            .get_watch_progress(3061046, "tv", Some(2), Some(20))
+            .unwrap();
+        assert!(ep20.is_some());
+        assert_eq!(ep20.unwrap().progress_seconds, 348);
+
+        // Query latest watched for entire series
+        let latest = db.get_watch_progress(3061046, "tv", None, None).unwrap();
+        assert!(latest.is_some());
+        assert_eq!(latest.unwrap().episode, Some(20));
+
+        // Purge specific episode only
+        db.clear_watch_progress(3061046, "tv", Some(2), Some(20))
+            .unwrap();
+        let ep20_cleared = db
+            .get_watch_progress(3061046, "tv", Some(2), Some(20))
+            .unwrap();
+        assert!(ep20_cleared.is_none());
+
+        // Episode 1 should still exist
+        let ep1 = db
+            .get_watch_progress(3061046, "tv", Some(1), Some(1))
+            .unwrap();
+        assert!(ep1.is_some());
     }
 }

@@ -256,6 +256,110 @@ impl App {
             return;
         }
 
+        // 1.5. If Resume / "Where to start?" modal is open
+        if self.resume_modal.is_some() {
+            let is_filtering = self
+                .resume_modal
+                .as_ref()
+                .map(|m| m.is_filtering)
+                .unwrap_or(false);
+
+            if is_filtering {
+                match code {
+                    KeyCode::Esc => {
+                        if let Some(ref mut m) = self.resume_modal {
+                            m.is_filtering = false;
+                        }
+                    }
+                    KeyCode::Backspace => {
+                        if let Some(ref mut m) = self.resume_modal {
+                            m.filter_query.pop();
+                            m.selected_idx = 0;
+                        }
+                    }
+                    KeyCode::Char(c) => {
+                        if let Some(ref mut m) = self.resume_modal {
+                            m.filter_query.push(c);
+                            m.selected_idx = 0;
+                        }
+                    }
+                    KeyCode::Up => {
+                        if let Some(ref mut m) = self.resume_modal {
+                            let count = m.filtered_indices().len();
+                            if count > 0 {
+                                if m.selected_idx == 0 {
+                                    m.selected_idx = count - 1;
+                                } else {
+                                    m.selected_idx -= 1;
+                                }
+                            }
+                        }
+                    }
+                    KeyCode::Down => {
+                        if let Some(ref mut m) = self.resume_modal {
+                            let count = m.filtered_indices().len();
+                            if count > 0 {
+                                m.selected_idx = (m.selected_idx + 1) % count;
+                            }
+                        }
+                    }
+                    KeyCode::Enter => {
+                        let opt_kind = self
+                            .resume_modal
+                            .as_ref()
+                            .and_then(|m| m.get_selected_option().map(|o| o.kind));
+                        if let Some(kind) = opt_kind {
+                            self.handle_resume_action(kind).await;
+                        }
+                    }
+                    _ => {}
+                }
+                return;
+            }
+
+            match code {
+                KeyCode::Esc | KeyCode::Char('q') => {
+                    self.resume_modal = None;
+                }
+                KeyCode::Char('/') => {
+                    if let Some(ref mut m) = self.resume_modal {
+                        m.is_filtering = true;
+                    }
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    if let Some(ref mut m) = self.resume_modal {
+                        let count = m.filtered_indices().len();
+                        if count > 0 {
+                            if m.selected_idx == 0 {
+                                m.selected_idx = count - 1;
+                            } else {
+                                m.selected_idx -= 1;
+                            }
+                        }
+                    }
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    if let Some(ref mut m) = self.resume_modal {
+                        let count = m.filtered_indices().len();
+                        if count > 0 {
+                            m.selected_idx = (m.selected_idx + 1) % count;
+                        }
+                    }
+                }
+                KeyCode::Enter => {
+                    let opt_kind = self
+                        .resume_modal
+                        .as_ref()
+                        .and_then(|m| m.get_selected_option().map(|o| o.kind));
+                    if let Some(kind) = opt_kind {
+                        self.handle_resume_action(kind).await;
+                    }
+                }
+                _ => {}
+            }
+            return;
+        }
+
         // 2. If Subtitle Language Selector modal is open
         if self.subtitle_modal.is_some() {
             match code {
