@@ -136,8 +136,14 @@ impl Database {
                 year = excluded.year,
                 poster_path = excluded.poster_path,
                 ep_title = excluded.ep_title,
-                progress_seconds = excluded.progress_seconds,
-                duration_seconds = excluded.duration_seconds,
+                progress_seconds = CASE 
+                    WHEN excluded.progress_seconds > 0 THEN excluded.progress_seconds 
+                    ELSE history.progress_seconds 
+                END,
+                duration_seconds = CASE 
+                    WHEN excluded.duration_seconds > 0 THEN excluded.duration_seconds 
+                    ELSE history.duration_seconds 
+                END,
                 last_watched = CURRENT_TIMESTAMP",
             params![
                 tmdb_id,

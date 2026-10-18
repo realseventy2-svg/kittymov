@@ -279,7 +279,7 @@ impl App {
                     Some(season_num),
                     Some(ep_num),
                 ) {
-                    if history.progress_seconds > 10 {
+                    if history.progress_seconds > 0 {
                         let series = modal.series.clone();
                         self.open_resume_modal(
                             series,
@@ -302,7 +302,9 @@ impl App {
                 None,
                 None,
             ) {
-                if history.progress_seconds > 10 {
+                if history.progress_seconds > 0
+                    || (item.media_type == "tv" && (history.season.is_some() || history.episode.is_some()))
+                {
                     let s = history.season;
                     let e = history.episode;
                     self.open_resume_modal(
@@ -352,7 +354,7 @@ impl App {
                 Some(season_num),
                 Some(ep_num),
             ) {
-                if history.progress_seconds > 10 {
+                if history.progress_seconds > 0 {
                     self.open_resume_modal(
                         series,
                         Some(season_num),
@@ -389,7 +391,9 @@ impl App {
                 None,
                 None,
             ) {
-                if history.progress_seconds > 10 {
+                if history.progress_seconds > 0
+                    || (item.media_type == "tv" && (history.season.is_some() || history.episode.is_some()))
+                {
                     let s = history.season;
                     let e = history.episode;
                     self.open_resume_modal(
