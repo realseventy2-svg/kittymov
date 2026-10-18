@@ -4,6 +4,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
+use tokio::sync::RwLock;
 
 #[derive(Debug, Clone)]
 pub struct MediaItem {
@@ -148,6 +149,7 @@ pub struct TmdbClient {
     client: Client,
     api_key: String,
     base_url: String,
+    season_cache: RwLock<HashMap<(i64, i32), Vec<TvEpisode>>>,
 }
 
 impl TmdbClient {
@@ -164,6 +166,7 @@ impl TmdbClient {
             client,
             api_key: final_key,
             base_url: "https://api.themoviedb.org/3".to_string(),
+            season_cache: RwLock::new(HashMap::new()),
         }
     }
 
@@ -566,6 +569,10 @@ impl TmdbClient {
         tmdb_id: i64,
         season: i32,
     ) -> Result<Vec<TvEpisode>, String> {
+        if let Some(cached) = self.season_cache.read().await.get(&(tmdb_id, season)) {
+            return Ok(cached.clone());
+        }
+
         let url = format!(
             "{}/tv/{}/season/{}?api_key={}",
             self.base_url, tmdb_id, season, self.api_key
@@ -580,7 +587,7 @@ impl TmdbClient {
             .await
             .map_err(|e| e.to_string())?;
 
-        Ok(resp
+        let episodes: Vec<TvEpisode> = resp
             .episodes
             .into_iter()
             .map(|ep| {
@@ -598,7 +605,14 @@ impl TmdbClient {
                     duration: dur,
                 }
             })
-            .collect())
+            .collect();
+
+        self.season_cache
+            .write()
+            .await
+            .insert((tmdb_id, season), episodes.clone());
+
+        Ok(episodes)
     }
 
     pub async fn get_imdb_id(&self, tmdb_id: i64, media_type: &str) -> Result<String, String> {
