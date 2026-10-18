@@ -536,9 +536,11 @@ fn render_providers_step(f: &mut Frame, area: Rect, selected_idx: usize, cfg: &C
         (
             "1. Primary Streaming Engine",
             match cfg.preferred_provider.as_str() {
+                "vidlink" => "VidLink (HD 1080p Direct + Subtitles • Recommended)",
                 "vixsrc" => "VixSrc (High-speed adaptive CDN)",
+                "hianime" => "HiAnime (Dedicated anime CDN)",
                 "lookmovie" => "LookMovie (Reliable backup CDN)",
-                _ => "Auto Fallback Engine (Tries VixSrc, fails over to LookMovie • Recommended)",
+                _ => "Auto Fallback Engine (VidLink Primary → VixSrc → HiAnime → LookMovie)",
             },
         ),
         (

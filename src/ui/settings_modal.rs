@@ -676,12 +676,13 @@ fn get_category_rows(
             (
                 "Preferred Streaming Provider",
                 SettingWidget::Select(match cfg.preferred_provider.to_lowercase().as_str() {
+                    "vidlink" => "VidLink First (HD 1080p Direct + Subs)".to_string(),
                     "vixsrc" => "VixSrc First (Ultra-Fast 1080p CDN)".to_string(),
                     "hianime" => "HiAnime First (Dedicated Anime 1080p CDN)".to_string(),
                     "lookmovie" => "LookMovie First (Fallback CDN)".to_string(),
-                    _ => "Auto Fallback (VixSrc → HiAnime → LookMovie)".to_string(),
+                    _ => "Auto Fallback (VidLink → VixSrc → HiAnime → LookMovie)".to_string(),
                 }),
-                "Streaming server query order. Auto Fallback tries VixSrc first, then HiAnime (anime) and LookMovie.",
+                "Streaming server query order. Auto Fallback tries VidLink first, then VixSrc, HiAnime, and LookMovie.",
             ),
             (
                 "Subtitle Source Strategy",

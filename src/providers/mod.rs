@@ -1,5 +1,6 @@
 pub mod hianime;
 pub mod lookmovie;
+pub mod vidlink;
 pub mod vixsrc;
 
 use async_trait::async_trait;
@@ -84,6 +85,7 @@ impl ProviderManager {
     pub fn new() -> Self {
         Self {
             providers: vec![
+                Arc::new(vidlink::VidLinkProvider::new()),
                 Arc::new(vixsrc::VixSrcProvider::new()),
                 Arc::new(hianime::HiAnimeProvider::new()),
                 Arc::new(lookmovie::LookMovieProvider::new()),
@@ -97,17 +99,21 @@ impl ProviderManager {
     }
 
     pub fn with_preference(preferred: &str) -> Self {
+        let vidlink = Arc::new(vidlink::VidLinkProvider::new());
         let vix = Arc::new(vixsrc::VixSrcProvider::new());
         let hianime = Arc::new(hianime::HiAnimeProvider::new());
         let look = Arc::new(lookmovie::LookMovieProvider::new());
 
         let providers: Vec<Arc<dyn Provider>> = match preferred.to_lowercase().as_str() {
-            "hianime" => vec![hianime, vix, look],
-            "lookmovie" => vec![look, vix, hianime],
+            "vidlink" => vec![vidlink, vix, hianime, look],
+            "vixsrc" => vec![vix, vidlink, hianime, look],
+            "hianime" => vec![hianime, vidlink, vix, look],
+            "lookmovie" => vec![look, vidlink, vix, hianime],
+            "vidlink_only" => vec![vidlink],
             "vixsrc_only" => vec![vix],
             "hianime_only" => vec![hianime],
             "lookmovie_only" => vec![look],
-            _ => vec![vix, hianime, look],
+            _ => vec![vidlink, vix, hianime, look],
         };
 
         Self { providers }
@@ -135,7 +141,30 @@ impl ProviderManager {
         let key = choice.to_lowercase();
         let effective_audio = audio_mode.or(req.audio_mode.as_deref());
 
-        let mut candidate = if key.contains("hianime") {
+        let mut candidate = if key.contains("vidlink") {
+            let mut res = None;
+            for provider in &self.providers {
+                if provider.name().to_lowercase().contains("vidlink") {
+                    if provider.name() == "VidLink (HD 1080p Direct)" {
+                        let vl = vidlink::VidLinkProvider::new();
+                        res = Some(vl.resolve_with_quality(req, quality).await?);
+                    } else {
+                        res = Some(provider.resolve(req).await?);
+                    }
+                    break;
+                }
+            }
+            let mut cand = if let Some(c) = res {
+                c
+            } else {
+                let vl = vidlink::VidLinkProvider::new();
+                vl.resolve_with_quality(req, quality).await?
+            };
+            if let Some(q) = quality {
+                cand.quality = Some(q.to_string());
+            }
+            cand
+        } else if key.contains("hianime") {
             let mut res = None;
             for provider in &self.providers {
                 if provider.name().to_lowercase().contains("hianime") {
@@ -216,6 +245,7 @@ impl ProviderManager {
         // If candidate has no external subtitles, opportunistically augment from LookMovie with a short timeout
         if candidate.subtitles.is_empty()
             && !candidate.provider_name.to_lowercase().contains("lookmovie")
+            && !candidate.provider_name.to_lowercase().contains("vidlink")
             && !candidate.provider_name.to_lowercase().contains("hianime")
         {
             for provider in &self.providers {
@@ -262,15 +292,31 @@ impl ProviderManager {
         let mut ordered_providers: Vec<Arc<dyn Provider>> = self.providers.clone();
 
         if is_anime {
-            // Re-order providers so HiAnime is tried first for anime
+            // Re-order providers so HiAnime is tried first for anime, followed by VidLink, then VixSrc, then LookMovie
             ordered_providers.sort_by_key(|p| {
                 let name = p.name().to_lowercase();
                 if name.contains("hianime") {
                     0
+                } else if name.contains("vidlink") {
+                    1
+                } else if name.contains("vixsrc") {
+                    2
+                } else {
+                    3
+                }
+            });
+        } else {
+            // Mainstream (movies/series): VidLink is primary first, then VixSrc, then LookMovie, then HiAnime
+            ordered_providers.sort_by_key(|p| {
+                let name = p.name().to_lowercase();
+                if name.contains("vidlink") {
+                    0
                 } else if name.contains("vixsrc") {
                     1
-                } else {
+                } else if name.contains("lookmovie") {
                     2
+                } else {
+                    3
                 }
             });
         }
@@ -279,7 +325,14 @@ impl ProviderManager {
         let effective_audio = audio_mode.or(req.audio_mode.as_deref());
 
         for provider in &ordered_providers {
-            let res = if provider.name().to_lowercase().contains("hianime") {
+            let res = if provider.name().to_lowercase().contains("vidlink") {
+                if provider.name() == "VidLink (HD 1080p Direct)" {
+                    let vl = vidlink::VidLinkProvider::new();
+                    vl.resolve_with_quality(req, quality).await
+                } else {
+                    provider.resolve(req).await
+                }
+            } else if provider.name().to_lowercase().contains("hianime") {
                 if provider.name() == "HiAnime (1080p Anime CDN)" {
                     let hi = hianime::HiAnimeProvider::new();
                     hi.resolve_with_quality(req, quality, effective_audio).await
@@ -301,6 +354,7 @@ impl ProviderManager {
                 Ok(mut candidate) => {
                     if candidate.subtitles.is_empty()
                         && !candidate.provider_name.to_lowercase().contains("lookmovie")
+                        && !candidate.provider_name.to_lowercase().contains("vidlink")
                         && !candidate.provider_name.to_lowercase().contains("hianime")
                     {
                         for p in &self.providers {
@@ -503,6 +557,10 @@ mod tests {
     async fn test_provider_manager_resolve_with_choice() {
         let mgr = ProviderManager::with_providers(vec![
             Arc::new(MockProvider {
+                name: "vidlink_server",
+                succeed: true,
+            }),
+            Arc::new(MockProvider {
                 name: "vixsrc_server",
                 succeed: true,
             }),
@@ -524,6 +582,9 @@ mod tests {
             audio_mode: None,
         };
 
+        let vid_res = mgr.resolve_with_choice("vidlink", &req).await.unwrap();
+        assert_eq!(vid_res.provider_name, "vidlink_server");
+
         let vix_res = mgr.resolve_with_choice("vixsrc", &req).await.unwrap();
         assert_eq!(vix_res.provider_name, "vixsrc_server");
 
@@ -531,7 +592,7 @@ mod tests {
         assert_eq!(look_res.provider_name, "lookmovie_server");
 
         let auto_res = mgr.resolve_with_choice("auto", &req).await.unwrap();
-        assert_eq!(auto_res.provider_name, "vixsrc_server");
+        assert_eq!(auto_res.provider_name, "vidlink_server");
     }
 
     #[tokio::test]
@@ -574,8 +635,12 @@ mod tests {
     async fn test_provider_manager_non_anime_routing() {
         let mgr = ProviderManager::with_providers(vec![
             Arc::new(MockProvider {
+                name: "vidlink_server",
+                succeed: true, // VidLink handles mainstream movies/shows first
+            }),
+            Arc::new(MockProvider {
                 name: "vixsrc_server",
-                succeed: true, // VixSrc handles mainstream movies/shows first
+                succeed: true,
             }),
             Arc::new(MockProvider {
                 name: "hianime_server",
@@ -602,7 +667,55 @@ mod tests {
         let res = mgr.resolve_with_choice("auto", &req).await;
         assert!(res.is_ok(), "Non-anime request should succeed: {:?}", res.err());
         let candidate = res.unwrap();
-        assert_eq!(candidate.provider_name, "vixsrc_server");
+        assert_eq!(candidate.provider_name, "vidlink_server");
+    }
+
+    #[tokio::test]
+    async fn test_vidlink_live_resolve_movie() {
+        let provider = vidlink::VidLinkProvider::new();
+        let req = MediaRequest {
+            tmdb_id: 533535, // Deadpool & Wolverine
+            media_type: "movie".to_string(),
+            season: None,
+            episode: None,
+            title: "Deadpool & Wolverine".to_string(),
+            year: Some("2024".to_string()),
+            genres: Some("Action, Comedy".to_string()),
+            is_anime: false,
+            audio_mode: None,
+        };
+
+        let res = provider.resolve(&req).await;
+        println!("VidLink movie result: {:?}", res);
+        assert!(res.is_ok(), "VidLink should resolve Deadpool & Wolverine: {:?}", res.err());
+        let candidate = res.unwrap();
+        assert!(candidate.stream_url.starts_with("http"));
+        assert!(candidate.provider_name.contains("VidLink"));
+        assert!(!candidate.subtitles.is_empty(), "VidLink should provide subtitle captions");
+    }
+
+    #[tokio::test]
+    async fn test_vidlink_live_resolve_tv() {
+        let provider = vidlink::VidLinkProvider::new();
+        let req = MediaRequest {
+            tmdb_id: 94605, // Arcane
+            media_type: "tv".to_string(),
+            season: Some(1),
+            episode: Some(1),
+            title: "Arcane".to_string(),
+            year: Some("2021".to_string()),
+            genres: Some("Animation, Action".to_string()),
+            is_anime: false,
+            audio_mode: None,
+        };
+
+        let res = provider.resolve(&req).await;
+        println!("VidLink TV result: {:?}", res);
+        assert!(res.is_ok(), "VidLink should resolve Arcane: {:?}", res.err());
+        let candidate = res.unwrap();
+        assert!(candidate.stream_url.starts_with("http"));
+        assert!(candidate.provider_name.contains("VidLink"));
+        assert!(!candidate.subtitles.is_empty(), "VidLink should provide subtitle captions");
     }
 
     #[tokio::test]
@@ -657,5 +770,34 @@ mod tests {
         let candidate = res.unwrap();
         assert!(candidate.stream_url.contains(".m3u8"));
         assert!(candidate.provider_name.contains("HiAnime"));
+    }
+
+    #[test]
+    fn test_crypto_secretbox_format() {
+        use crypto_secretbox::{
+            aead::{Aead, KeyInit},
+            Key, Nonce, XSalsa20Poly1305,
+        };
+        let key_hex = "c75136c5668bbfe65a7ecad431a745db68b5f381555b38d8f6c699449cf11fcd";
+        let key_bytes: Vec<u8> = (0..key_hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&key_hex[i..i + 2], 16).unwrap())
+            .collect();
+        let cipher = XSalsa20Poly1305::new(Key::from_slice(&key_bytes));
+        let nonce = Nonce::from_slice(&[0u8; 24]);
+
+        let timestamp: u64 = 1712345678;
+        let media_id = "533535";
+        let mut message = media_id.as_bytes().to_vec();
+        message.extend_from_slice(&timestamp.to_be_bytes());
+
+        let ct = cipher.encrypt(nonce, message.as_ref()).unwrap();
+        let mut full_payload = vec![0u8; 24];
+        full_payload.extend_from_slice(&ct);
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+        use base64::Engine;
+        let token = URL_SAFE_NO_PAD.encode(&full_payload);
+        println!("Rust token: {}", token);
+        assert_eq!(token, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOGHBygsbho0KKs1pYe8Hi8WAC8t-dVYZ2cQsmPR2");
     }
 }

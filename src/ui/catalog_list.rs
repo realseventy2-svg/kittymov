@@ -344,10 +344,16 @@ pub fn render_catalog_panel(
     };
 
     let server_badge = match preferred_provider.to_lowercase().as_str() {
+        "vidlink" => Span::styled(
+            "[VidLink] ",
+            Style::default()
+                .fg(Theme::ACCENT_CYAN)
+                .add_modifier(Modifier::BOLD),
+        ),
         "vixsrc" => Span::styled(
             "[VixSrc] ",
             Style::default()
-                .fg(Theme::ACCENT_CYAN)
+                .fg(Theme::BORDER)
                 .add_modifier(Modifier::BOLD),
         ),
         "hianime" => Span::styled(

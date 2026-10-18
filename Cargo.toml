@@ -22,6 +22,7 @@ futures-util = "0.3"
 chrono = "0.4"
 url = "2.5"
 base64 = "0.22"
+crypto_secretbox = "0.1.1"
 
 [profile.release]
 opt-level = 3

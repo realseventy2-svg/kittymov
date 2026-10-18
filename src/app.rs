@@ -105,6 +105,28 @@ pub fn default_qualities_for_provider(provider_id: &str) -> Vec<QualityTrackOpti
                 description: "Locked on LookMovie free CDN — falls back to 480p SD".to_string(),
             },
         ],
+        "vidlink" => vec![
+            QualityTrackOption {
+                label: "Auto (1080p FHD)".to_string(),
+                description: "VidLink direct HD stream • Multi-bitrate CDN".to_string(),
+            },
+            QualityTrackOption {
+                label: "1080p FHD".to_string(),
+                description: "1080p Full HD direct MP4/HLS stream".to_string(),
+            },
+            QualityTrackOption {
+                label: "720p HD".to_string(),
+                description: "720p High Definition stream".to_string(),
+            },
+            QualityTrackOption {
+                label: "480p SD".to_string(),
+                description: "480p Standard Definition stream".to_string(),
+            },
+            QualityTrackOption {
+                label: "360p Mobile".to_string(),
+                description: "360p lightweight mobile stream".to_string(),
+            },
+        ],
         "vixsrc" => vec![
             QualityTrackOption {
                 label: "Auto (1080p)".to_string(),
@@ -150,6 +172,59 @@ pub fn default_subtitles_for_provider(
 ) -> Vec<SubtitleTrackOption> {
     let preferred_name = lang_name(preferred_lang);
     match provider_id.to_lowercase().as_str() {
+        "vidlink" => vec![
+            SubtitleTrackOption {
+                label: "Auto Match".to_string(),
+                lang_code: preferred_lang.to_string(),
+                badge: "DIRECT".to_string(),
+                is_native: true,
+                description: format!(
+                    "VidLink Built-in Subtitles (.srt • {})",
+                    preferred_name
+                ),
+                file_or_url: String::new(),
+            },
+            SubtitleTrackOption {
+                label: format!("{} [VidLink]", preferred_name),
+                lang_code: preferred_lang.to_string(),
+                badge: "DIRECT".to_string(),
+                is_native: true,
+                description: "Official VidLink direct timed subtitle (.srt)".to_string(),
+                file_or_url: String::new(),
+            },
+            SubtitleTrackOption {
+                label: format!("{} [Wyzie Subs]", preferred_name),
+                lang_code: preferred_lang.to_string(),
+                badge: "CLOUD".to_string(),
+                is_native: false,
+                description: "Wyzie Subs (.srt) • Community ad-free cloud track".to_string(),
+                file_or_url: String::new(),
+            },
+            SubtitleTrackOption {
+                label: "Spanish [VidLink]".to_string(),
+                lang_code: "spa".to_string(),
+                badge: "DIRECT".to_string(),
+                is_native: true,
+                description: "VidLink direct Spanish subtitle (.srt)".to_string(),
+                file_or_url: String::new(),
+            },
+            SubtitleTrackOption {
+                label: "French [VidLink]".to_string(),
+                lang_code: "fra".to_string(),
+                badge: "DIRECT".to_string(),
+                is_native: true,
+                description: "VidLink direct French subtitle (.srt)".to_string(),
+                file_or_url: String::new(),
+            },
+            SubtitleTrackOption {
+                label: "Off".to_string(),
+                lang_code: "off".to_string(),
+                badge: "OFF".to_string(),
+                is_native: false,
+                description: "Disable subtitle display during playback".to_string(),
+                file_or_url: String::new(),
+            },
+        ],
         "hianime" => vec![
             SubtitleTrackOption {
                 label: "Auto Match".to_string(),
@@ -316,6 +391,30 @@ pub fn default_subtitles_for_provider(
 
 pub fn default_sources_for_provider(provider_id: &str) -> Vec<SourceTrackOption> {
     match provider_id.to_lowercase().as_str() {
+        "vidlink" => vec![
+            SourceTrackOption {
+                id: "primary".to_string(),
+                name: "Primary CDN (HD Master)".to_string(),
+                status_str: "current • ready".to_string(),
+                is_selected: true,
+                description: "VidLink CDN • High-speed 1080p direct stream • host vidlink.pro"
+                    .to_string(),
+            },
+            SourceTrackOption {
+                id: "vault".to_string(),
+                name: "MediaVault (Direct CDN)".to_string(),
+                status_str: "available".to_string(),
+                is_selected: false,
+                description: "VidLink CDN • MediaVault • Direct high bitrate stream".to_string(),
+            },
+            SourceTrackOption {
+                id: "edge".to_string(),
+                name: "Edge MultiLang (Global)".to_string(),
+                status_str: "available".to_string(),
+                is_selected: false,
+                description: "VidLink CDN • Global edge mirror with multi-lang subtitles".to_string(),
+            },
+        ],
         "vixsrc" => vec![
             SourceTrackOption {
                 id: "vanguard".to_string(),
@@ -408,8 +507,15 @@ pub fn default_sources_for_provider(provider_id: &str) -> Vec<SourceTrackOption>
                 name: "Auto (Best Available)".to_string(),
                 status_str: "current • ready".to_string(),
                 is_selected: true,
-                description: "Automatic multi-provider chain (VixSrc CDN → HiAnime CDN → LookMovie CDN)"
+                description: "Automatic multi-provider chain (VidLink Direct → VixSrc CDN → HiAnime CDN → LookMovie CDN)"
                     .to_string(),
+            },
+            SourceTrackOption {
+                id: "vidlink_direct".to_string(),
+                name: "VidLink Primary".to_string(),
+                status_str: "available".to_string(),
+                is_selected: false,
+                description: "Primary HD 1080p direct stream • host vidlink.pro".to_string(),
             },
             SourceTrackOption {
                 id: "vixsrc_direct".to_string(),
@@ -901,12 +1007,13 @@ pub fn get_all_settings_metadata(cfg: &Config) -> Vec<SettingMatch> {
             item_idx: 0,
             label: "Preferred Provider",
             value_str: match cfg.preferred_provider.to_lowercase().as_str() {
+                "vidlink" => "VidLink First (HD 1080p Direct + Subs)".to_string(),
                 "vixsrc" => "VixSrc First (Ultra-Fast 1080p CDN)".to_string(),
                 "hianime" => "HiAnime First (Dedicated Anime 1080p CDN)".to_string(),
                 "lookmovie" => "LookMovie First (Fallback CDN)".to_string(),
-                _ => "Auto Fallback (VixSrc → HiAnime → LookMovie)".to_string(),
+                _ => "Auto Fallback (VidLink → VixSrc → HiAnime → LookMovie)".to_string(),
             },
-            description: "Priority order for streaming servers. Auto Fallback tries VixSrc first, then HiAnime (anime) and LookMovie.",
+            description: "Priority order for streaming servers. Auto Fallback tries VidLink first, then VixSrc, HiAnime, and LookMovie.",
         },
         SettingMatch {
             category: SettingsCategory::Providers,
@@ -1859,7 +1966,7 @@ impl App {
                 },
                 SettingsCategory::Providers => match s.item_idx {
                     0 => {
-                        let providers = ["auto", "vixsrc", "hianime", "lookmovie"];
+                        let providers = ["auto", "vidlink", "vixsrc", "hianime", "lookmovie"];
                         self.cfg.preferred_provider =
                             cycle_list(&providers, &self.cfg.preferred_provider, forward);
                     }
@@ -2099,7 +2206,7 @@ impl App {
             },
             SetupStep::Providers => match item_idx {
                 0 => {
-                    let provs = ["auto", "vixsrc", "hianime", "lookmovie"];
+                    let provs = ["auto", "vidlink", "vixsrc", "hianime", "lookmovie"];
                     self.cfg.preferred_provider =
                         cycle_list(&provs, &self.cfg.preferred_provider, forward);
                 }
@@ -2527,6 +2634,7 @@ impl App {
         };
 
         let provider_display_name = match provider_choice.to_lowercase().as_str() {
+            "vidlink" => "VidLink Server",
             "vixsrc" => "VixSrc Server",
             "hianime" => "HiAnime Server",
             "lookmovie" => "LookMovie Server",
@@ -2676,6 +2784,7 @@ impl App {
             // STEP 2: Connecting Provider
             let active_provider = provider_choice.clone();
             let prov_label = match active_provider.as_str() {
+                "vidlink" => "VidLink Server",
                 "vixsrc" => "VixSrc Server",
                 "hianime" => "HiAnime Server",
                 "lookmovie" => "LookMovie Server",
@@ -2683,7 +2792,7 @@ impl App {
                     if mapped_req.is_anime() {
                         "HiAnime (Auto Anime Routing)"
                     } else {
-                        "Auto Fallback Engine"
+                        "Auto Fallback Engine (VidLink Primary)"
                     }
                 }
             };
@@ -2710,7 +2819,7 @@ impl App {
                 Ok(s) => s,
                 Err(err_primary) => {
                     if active_provider == "auto" {
-                        // In auto mode, ProviderManager's resolve_with_fallback already chained vixsrc -> hianime -> lookmovie
+                        // In auto mode, ProviderManager's resolve_with_fallback already chained vidlink -> vixsrc -> hianime -> lookmovie
                         let _ = tx.send(LoadingProgress::StepUpdate {
                             step: LoadingStep::ConnectingProvider,
                             status: StepStatus::Failed,
@@ -2721,6 +2830,59 @@ impl App {
                             err_primary
                         )));
                         return;
+                    } else if active_provider == "vidlink" {
+                        let _ = tx.send(LoadingProgress::FallbackNotice {
+                            new_provider: "VixSrc CDN".to_string(),
+                        });
+                        let _ = tx.send(LoadingProgress::StepUpdate {
+                            step: LoadingStep::ConnectingProvider,
+                            status: StepStatus::Active,
+                            detail: "VidLink failed; failing over to VixSrc...".to_string(),
+                        });
+                        match providers
+                            .resolve_with_choice_and_quality(
+                                "vixsrc",
+                                &req_clone,
+                                effective_quality,
+                                effective_audio,
+                            )
+                            .await
+                        {
+                            Ok(s) => s,
+                            Err(err_vix) => {
+                                let _ = tx.send(LoadingProgress::FallbackNotice {
+                                    new_provider: "LookMovie (Fallback CDN)".to_string(),
+                                });
+                                let _ = tx.send(LoadingProgress::StepUpdate {
+                                    step: LoadingStep::ConnectingProvider,
+                                    status: StepStatus::Active,
+                                    detail: "VixSrc failed; failing over to LookMovie...".to_string(),
+                                });
+                                match providers
+                                    .resolve_with_choice_and_quality(
+                                        "lookmovie",
+                                        &req_clone,
+                                        effective_quality,
+                                        effective_audio,
+                                    )
+                                    .await
+                                {
+                                    Ok(s) => s,
+                                    Err(err_look) => {
+                                        let _ = tx.send(LoadingProgress::StepUpdate {
+                                            step: LoadingStep::ConnectingProvider,
+                                            status: StepStatus::Failed,
+                                            detail: format!("All providers failed: {}", err_look),
+                                        });
+                                        let _ = tx.send(LoadingProgress::Failed(format!(
+                                            "Providers failed: VidLink ({}), VixSrc ({}), LookMovie ({})",
+                                            err_primary, err_vix, err_look
+                                        )));
+                                        return;
+                                    }
+                                }
+                            }
+                        }
                     } else if active_provider == "vixsrc" {
                         let _ = tx.send(LoadingProgress::FallbackNotice {
                             new_provider: "HiAnime CDN".to_string(),
@@ -3206,6 +3368,7 @@ impl App {
         provider_choice: &str,
     ) {
         let display_name = match provider_choice {
+            "vidlink" => "VidLink Server",
             "vixsrc" => "VixSrc Server",
             "hianime" => "HiAnime Server",
             "lookmovie" => "LookMovie Server",
@@ -3341,6 +3504,7 @@ impl App {
     ) {
         let display_title = format!("{} S{:02}E{:02}", title, season, episode);
         let display_name = match provider_choice {
+            "vidlink" => "VidLink Server",
             "vixsrc" => "VixSrc Server",
             "hianime" => "HiAnime Server",
             "lookmovie" => "LookMovie Server",
@@ -3683,13 +3847,19 @@ fn default_provider_options() -> Vec<ProviderOption> {
         ProviderOption {
             id: "auto".to_string(),
             name: "Auto Fallback Engine".to_string(),
-            description: "Fast multi-provider chain (VixSrc CDN → HiAnime CDN → LookMovie CDN)"
+            description: "Fast multi-provider chain (VidLink Direct → VixSrc CDN → HiAnime CDN → LookMovie CDN)"
+                .to_string(),
+        },
+        ProviderOption {
+            id: "vidlink".to_string(),
+            name: "VidLink Server".to_string(),
+            description: "Primary Direct HD CDN • 1080p FHD • Multi-Language Subtitles"
                 .to_string(),
         },
         ProviderOption {
             id: "vixsrc".to_string(),
             name: "VixSrc Server".to_string(),
-            description: "Primary Ultra-Fast CDN • 1080p FHD HLS • Multi-Audio".to_string(),
+            description: "Ultra-Fast Secondary CDN • 1080p FHD HLS • Multi-Audio".to_string(),
         },
         ProviderOption {
             id: "hianime".to_string(),
@@ -3993,6 +4163,23 @@ mod tests {
             .subtitles
             .iter()
             .any(|s| s.is_native && s.badge == "NATIVE"));
+
+        // Switch to vidlink
+        let vid_idx = modal
+            .options
+            .iter()
+            .position(|o| o.id == "vidlink")
+            .expect("vidlink should be an option");
+        modal.selected_idx = vid_idx;
+        modal.update_dependent_tracks("eng");
+
+        // Verify VidLink sources, qualities, and subtitles
+        assert!(modal.sources.iter().any(|s| s.name.contains("Primary CDN")));
+        assert!(modal.qualities.iter().any(|q| q.label.contains("1080p FHD")));
+        assert!(modal
+            .subtitles
+            .iter()
+            .any(|s| s.is_native && s.badge == "DIRECT"));
     }
 
     #[test]
