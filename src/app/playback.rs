@@ -745,8 +745,34 @@ impl App {
     }
 
     pub async fn execute_player(&mut self, stream: &StreamCandidate, title: &str) {
+        let poster_path = self
+            .playback_loading
+            .as_ref()
+            .map(|l| l.poster_path.clone())
+            .unwrap_or_default();
         self.playback_loading = None;
-        self.launch_mpv_session(stream, title).await;
+
+        let is_tv = stream.request.media_type == "tv"
+            && stream.request.season.is_some()
+            && stream.request.episode.is_some();
+
+        if is_tv && self.cfg.auto_play_next {
+            let season = stream.request.season.unwrap_or(1);
+            let episode = stream.request.episode.unwrap_or(1);
+            let year = stream.request.year.clone().unwrap_or_default();
+            self.launch_mpv_tv_auto_next(
+                stream.request.tmdb_id,
+                &stream.request.title,
+                &year,
+                &poster_path,
+                season,
+                episode,
+                stream.clone(),
+            )
+            .await;
+        } else {
+            self.launch_mpv_session(stream, title).await;
+        }
     }
 
     pub async fn play_movie(&mut self, item: MediaItem) {
@@ -1022,7 +1048,7 @@ impl App {
         crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen).ok();
 
         let mut controller = MpvController::new();
-        let result = match controller.start_player(stream, title, &self.cfg) {
+        let result = match controller.start_player(stream, title, &self.cfg, false) {
             Ok(()) => {
                 let _ = controller.wait_async().await;
                 Ok(())
@@ -1052,7 +1078,7 @@ impl App {
         title: &str,
         year: &str,
         poster_path: &str,
-        current_season: i32,
+        mut current_season: i32,
         mut current_episode: i32,
         initial_stream: StreamCandidate,
     ) {
@@ -1067,23 +1093,22 @@ impl App {
             format!("{} S{:02}E{:02}", title, current_season, current_episode)
         };
 
-        let result = match controller.start_player(&initial_stream, &display_title, &self.cfg) {
+        let result = match controller.start_player(&initial_stream, &display_title, &self.cfg, true) {
             Ok(()) => {
                 let (status_tx, mut status_rx) = mpsc::channel(32);
 
                 if let Ok(socket) = controller.wait_for_socket(Duration::from_secs(4)).await {
                     controller.monitor_ipc(socket, status_tx);
 
-                    let mut prefetch_started = false;
+                    let mut prefetch_task: Option<tokio::task::JoinHandle<Result<StreamCandidate, String>>> = None;
 
                     while let Some(status) = status_rx.recv().await {
                         match status {
                             PlaybackStatus::Playing { pos, duration } => {
                                 if self.cfg.auto_play_next
-                                    && !prefetch_started
+                                    && prefetch_task.is_none()
                                     && (duration > 0.0 && pos / duration >= 0.8 || pos >= 1200.0)
                                 {
-                                    prefetch_started = true;
                                     let providers = self.providers.clone();
                                     let next_req = MediaRequest {
                                         tmdb_id,
@@ -1097,29 +1122,58 @@ impl App {
                                         audio_mode: initial_stream.request.audio_mode.clone(),
                                     };
 
-                                    tokio::spawn(async move {
+                                    prefetch_task = Some(tokio::spawn(async move {
                                         providers.resolve_with_fallback(&next_req).await
-                                    });
+                                    }));
                                 }
                             }
                             PlaybackStatus::EofReached => {
                                 if self.cfg.auto_play_next {
-                                    current_episode += 1;
-                                    let next_req = MediaRequest {
-                                        tmdb_id,
-                                        media_type: "tv".to_string(),
-                                        season: Some(current_season),
-                                        episode: Some(current_episode),
-                                        title: title.to_string(),
-                                        year: Some(year.to_string()),
-                                        genres: initial_stream.request.genres.clone(),
-                                        is_anime: initial_stream.request.is_anime,
-                                        audio_mode: initial_stream.request.audio_mode.clone(),
+                                    // 1. Await prefetch if already running, or resolve next episode on demand
+                                    let mut next_cand_res = if let Some(task) = prefetch_task.take() {
+                                        task.await.unwrap_or_else(|e| Err(e.to_string()))
+                                    } else {
+                                        let next_req = MediaRequest {
+                                            tmdb_id,
+                                            media_type: "tv".to_string(),
+                                            season: Some(current_season),
+                                            episode: Some(current_episode + 1),
+                                            title: title.to_string(),
+                                            year: Some(year.to_string()),
+                                            genres: initial_stream.request.genres.clone(),
+                                            is_anime: initial_stream.request.is_anime,
+                                            audio_mode: initial_stream.request.audio_mode.clone(),
+                                        };
+                                        self.providers.resolve_with_fallback(&next_req).await
                                     };
 
-                                    if let Ok(mut next_stream) =
-                                        self.providers.resolve_with_fallback(&next_req).await
-                                    {
+                                    let mut target_season = current_season;
+                                    let mut target_episode = current_episode + 1;
+
+                                    // 2. If episode + 1 failed, attempt next season episode 1 (season finale rollover)
+                                    if next_cand_res.is_err() {
+                                        let next_season_req = MediaRequest {
+                                            tmdb_id,
+                                            media_type: "tv".to_string(),
+                                            season: Some(current_season + 1),
+                                            episode: Some(1),
+                                            title: title.to_string(),
+                                            year: Some(year.to_string()),
+                                            genres: initial_stream.request.genres.clone(),
+                                            is_anime: initial_stream.request.is_anime,
+                                            audio_mode: initial_stream.request.audio_mode.clone(),
+                                        };
+                                        if let Ok(cand) = self.providers.resolve_with_fallback(&next_season_req).await {
+                                            target_season = current_season + 1;
+                                            target_episode = 1;
+                                            next_cand_res = Ok(cand);
+                                        }
+                                    }
+
+                                    if let Ok(mut next_stream) = next_cand_res {
+                                        current_season = target_season;
+                                        current_episode = target_episode;
+
                                         if next_stream.is_expired_or_expiring_soon() {
                                             let _ = self
                                                 .providers
@@ -1143,7 +1197,15 @@ impl App {
                                                 )
                                                 .await;
                                             if !external_subs.is_empty() {
-                                                next_stream.subtitles = external_subs;
+                                                if next_stream.subtitles.is_empty() {
+                                                    next_stream.subtitles = external_subs;
+                                                } else {
+                                                    for ext in external_subs {
+                                                        if !next_stream.subtitles.contains(&ext) {
+                                                            next_stream.subtitles.push(ext);
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
 
@@ -1156,6 +1218,34 @@ impl App {
                                                 .send_command(&["set_property", "referrer", ""])
                                                 .await;
                                         }
+
+                                        let custom_headers: Vec<String> = next_stream
+                                            .headers
+                                            .iter()
+                                            .filter(|(k, _)| {
+                                                !k.eq_ignore_ascii_case("user-agent")
+                                                    && !k.eq_ignore_ascii_case("referer")
+                                            })
+                                            .map(|(k, v)| {
+                                                let clean_k: String = k
+                                                    .chars()
+                                                    .filter(|c| *c != '\r' && *c != '\n' && *c != ':')
+                                                    .collect();
+                                                let clean_v: String =
+                                                    v.chars().filter(|c| *c != '\r' && *c != '\n').collect();
+                                                format!("{}: {}", clean_k, clean_v)
+                                            })
+                                            .collect();
+                                        if !custom_headers.is_empty() {
+                                            let _ = controller
+                                                .send_command(&[
+                                                    "set_property",
+                                                    "http-header-fields",
+                                                    &custom_headers.join(","),
+                                                ])
+                                                .await;
+                                        }
+
                                         let next_title =
                                             if let Some(ref act) = next_stream.actual_title {
                                                 format!("{} — {}", title, act)
@@ -1175,17 +1265,23 @@ impl App {
                                                 ),
                                             ])
                                             .await;
-                                        for sub in &next_stream.subtitles {
-                                            let _ = controller
-                                                .send_command(&["sub-add", sub, "auto"])
-                                                .await;
-                                        }
+
                                         let _ = controller
                                             .send_command(&[
                                                 "loadfile",
                                                 &next_stream.stream_url,
                                                 "replace",
                                             ])
+                                            .await;
+
+                                        for sub in &next_stream.subtitles {
+                                            let _ = controller
+                                                .send_command(&["sub-add", sub, "auto"])
+                                                .await;
+                                        }
+
+                                        let _ = controller
+                                            .send_command(&["set_property", "pause", "no"])
                                             .await;
 
                                         let _ = self.db.record_watch(
@@ -1200,10 +1296,11 @@ impl App {
                                             0,
                                             0,
                                         );
-                                        prefetch_started = false;
+                                        prefetch_task = None;
                                         continue;
                                     }
                                 }
+                                let _ = controller.send_command(&["quit"]).await;
                                 break;
                             }
                             PlaybackStatus::UserQuit => {

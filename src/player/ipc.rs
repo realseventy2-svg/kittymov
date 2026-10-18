@@ -39,6 +39,7 @@ impl MpvController {
         stream: &StreamCandidate,
         title: &str,
         cfg: &Config,
+        idle: bool,
     ) -> Result<(), String> {
         // Clean up socket file if left over
         if self.ipc_path.exists() {
@@ -55,6 +56,10 @@ impl MpvController {
 
         let mut cmd = Command::new(&cfg.player);
         cmd.arg(format!("--input-ipc-server={}", self.ipc_path.display()));
+        if idle {
+            cmd.arg("--idle=yes");
+            cmd.arg("--force-window=yes");
+        }
         let quality_tag = stream.quality.as_deref().unwrap_or("Auto");
         let title_with_provider = format!(
             "KittyMov: {} [{}] [{}] [{}]",
@@ -209,7 +214,7 @@ impl MpvController {
         Err("Timed out waiting for MPV IPC socket".to_string())
     }
 
-    /// Spawns a background task monitoring time-pos and playback events via JSON-IPC
+    /// Spawns a background task monitoring time-pos, duration, and playback events via JSON-IPC
     pub fn monitor_ipc(&self, stream: UnixStream, status_tx: mpsc::Sender<PlaybackStatus>) {
         let (reader, mut writer) = stream.into_split();
         let mut reader = BufReader::new(reader);
@@ -218,45 +223,76 @@ impl MpvController {
         let poll_tx = status_tx.clone();
         tokio::spawn(async move {
             let mut line = String::new();
+            let mut current_dur = 0.0;
+
             loop {
                 line.clear();
                 match reader.read_line(&mut line).await {
-                    Ok(0) => break, // Socket closed
+                    Ok(0) => {
+                        let _ = poll_tx.send(PlaybackStatus::UserQuit).await;
+                        break; // Socket closed
+                    }
                     Ok(_) => {
                         if let Ok(val) = serde_json::from_str::<Value>(&line) {
                             // Check for events
                             if let Some(event) = val.get("event").and_then(|e| e.as_str()) {
-                                if event == "end-file" {
-                                    let reason =
-                                        val.get("reason").and_then(|r| r.as_str()).unwrap_or("");
-                                    if reason == "eof" {
-                                        let _ = poll_tx.send(PlaybackStatus::EofReached).await;
-                                    } else if reason == "quit" {
-                                        let _ = poll_tx.send(PlaybackStatus::UserQuit).await;
-                                        break;
+                                match event {
+                                    "start-file" => {
+                                        current_dur = 0.0;
                                     }
+                                    "end-file" => {
+                                        let reason =
+                                            val.get("reason").and_then(|r| r.as_str()).unwrap_or("");
+                                        if reason == "eof" {
+                                            let _ = poll_tx.send(PlaybackStatus::EofReached).await;
+                                        } else if reason == "quit" {
+                                            let _ = poll_tx.send(PlaybackStatus::UserQuit).await;
+                                            break;
+                                        }
+                                    }
+                                    _ => {}
                                 }
                             }
-                            // Check response data
-                            if let Some(data) = val.get("data") {
-                                if let Some(pos) = data.as_f64() {
-                                    let _ = poll_tx
-                                        .send(PlaybackStatus::Playing { pos, duration: 0.0 })
-                                        .await;
+                            // Check response data from property polls
+                            if let Some(req_id) = val.get("request_id").and_then(|r| r.as_u64()) {
+                                match req_id {
+                                    1 => {
+                                        if let Some(pos) = val.get("data").and_then(|d| d.as_f64()) {
+                                            let _ = poll_tx
+                                                .send(PlaybackStatus::Playing {
+                                                    pos,
+                                                    duration: current_dur,
+                                                })
+                                                .await;
+                                        }
+                                    }
+                                    2 => {
+                                        if let Some(dur) = val.get("data").and_then(|d| d.as_f64()) {
+                                            current_dur = dur;
+                                        }
+                                    }
+                                    _ => {}
                                 }
                             }
                         }
                     }
-                    Err(_) => break,
+                    Err(_) => {
+                        let _ = poll_tx.send(PlaybackStatus::UserQuit).await;
+                        break;
+                    }
                 }
             }
         });
 
-        // Task 2: Polling loop sending get_property
+        // Task 2: Polling loop sending get_property time-pos and duration
         tokio::spawn(async move {
-            let poll_cmd = json!({ "command": ["get_property", "time-pos"] }).to_string() + "\n";
+            let pos_cmd = json!({ "command": ["get_property", "time-pos"], "request_id": 1 }).to_string() + "\n";
+            let dur_cmd = json!({ "command": ["get_property", "duration"], "request_id": 2 }).to_string() + "\n";
             loop {
-                if writer.write_all(poll_cmd.as_bytes()).await.is_err() {
+                if writer.write_all(pos_cmd.as_bytes()).await.is_err() {
+                    break;
+                }
+                if writer.write_all(dur_cmd.as_bytes()).await.is_err() {
                     break;
                 }
                 tokio::time::sleep(Duration::from_millis(500)).await;
