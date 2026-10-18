@@ -3760,6 +3760,10 @@ impl App {
                                             let _ = controller
                                                 .send_command(&["set_property", "referrer", embed])
                                                 .await;
+                                        } else {
+                                            let _ = controller
+                                                .send_command(&["set_property", "referrer", ""])
+                                                .await;
                                         }
                                         let next_title =
                                             if let Some(ref act) = next_stream.actual_title {

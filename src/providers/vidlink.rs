@@ -128,13 +128,6 @@ impl VidLinkProvider {
             format!("https://vidlink.pro/api/b/tv/{}/{}/{}?multiLang=1", token, s, ep)
         };
 
-        let embed_url = if is_movie {
-            format!("https://vidlink.pro/movie/{}", req.tmdb_id)
-        } else {
-            let s = req.season.unwrap_or(1);
-            let ep = req.episode.unwrap_or(1);
-            format!("https://vidlink.pro/tv/{}/{}/{}", req.tmdb_id, s, ep)
-        };
 
         let resp = self
             .client
@@ -188,10 +181,10 @@ impl VidLinkProvider {
             }
         }
 
-        let mut headers = HashMap::new();
-        headers.insert("User-Agent".to_string(), VIDLINK_USER_AGENT.to_string());
-        headers.insert("Origin".to_string(), VIDLINK_ORIGIN.to_string());
-        headers.insert("Referer".to_string(), VIDLINK_REFERER.to_string());
+        // The underlying CDN (bcdn.hakunaymatata.com) blocks requests bearing the vidlink.pro
+        // Referer with HTTP 429 Too Many Requests. Leaving headers empty and embed_url None
+        // allows MPV to stream directly at full speed without triggering the anti-hotlink block.
+        let headers = HashMap::new();
 
         let now_secs = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -205,7 +198,7 @@ impl VidLinkProvider {
             headers,
             subtitles,
             expires_at,
-            embed_url: Some(embed_url),
+            embed_url: None,
             request: req.clone(),
             actual_title: None,
             quality: Some(actual_quality),
