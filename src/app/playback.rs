@@ -1088,22 +1088,29 @@ impl App {
                     }
                 }
 
-                let _ = controller.wait_async().await;
+                let exit_code = controller.wait_async().await.unwrap_or(0);
 
-                let _ = self.db.record_watch(
-                    stream.request.tmdb_id,
-                    &stream.request.media_type,
-                    title,
-                    stream.request.year.as_deref().unwrap_or(""),
-                    "",
-                    stream.request.season,
-                    stream.request.episode,
-                    None,
-                    last_pos as i64,
-                    last_dur as i64,
-                );
+                if exit_code != 0 && last_pos < 1.0 {
+                    Err(format!(
+                        "Stream CDN rejected connection or timed out (exit code {}). Press [s] to switch provider.",
+                        exit_code
+                    ))
+                } else {
+                    let _ = self.db.record_watch(
+                        stream.request.tmdb_id,
+                        &stream.request.media_type,
+                        title,
+                        stream.request.year.as_deref().unwrap_or(""),
+                        "",
+                        stream.request.season,
+                        stream.request.episode,
+                        None,
+                        last_pos as i64,
+                        last_dur as i64,
+                    );
 
-                Ok(())
+                    Ok(())
+                }
             }
             Err(e) => Err(e),
         };
@@ -1384,23 +1391,30 @@ impl App {
                         }
                     }
                 }
-                let _ = controller.wait_async().await;
+                let exit_code = controller.wait_async().await.unwrap_or(0);
 
-                // Save watch progress on exit
-                let _ = self.db.record_watch(
-                    tmdb_id,
-                    "tv",
-                    title,
-                    year,
-                    poster_path,
-                    Some(current_season),
-                    Some(current_episode),
-                    None,
-                    last_pos as i64,
-                    last_dur as i64,
-                );
+                if exit_code != 0 && last_pos < 1.0 {
+                    Err(format!(
+                        "Stream CDN rejected connection or timed out (exit code {}). Press [s] to switch provider.",
+                        exit_code
+                    ))
+                } else {
+                    // Save watch progress on exit
+                    let _ = self.db.record_watch(
+                        tmdb_id,
+                        "tv",
+                        title,
+                        year,
+                        poster_path,
+                        Some(current_season),
+                        Some(current_episode),
+                        None,
+                        last_pos as i64,
+                        last_dur as i64,
+                    );
 
-                Ok(())
+                    Ok(())
+                }
             }
             Err(e) => Err(e),
         };

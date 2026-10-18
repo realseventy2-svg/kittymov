@@ -182,9 +182,10 @@ impl VidLinkProvider {
         }
 
         // The underlying CDN (bcdn.hakunaymatata.com) blocks requests bearing the vidlink.pro
-        // Referer with HTTP 429 Too Many Requests. Leaving headers empty and embed_url None
-        // allows MPV to stream directly at full speed without triggering the anti-hotlink block.
-        let headers = HashMap::new();
+        // Referer with HTTP 429. Supplying a standard browser User-Agent without referer
+        // ensures ffmpeg connects cleanly without triggering anti-bot or anti-hotlink blocks.
+        let mut headers = HashMap::new();
+        headers.insert("User-Agent".to_string(), VIDLINK_USER_AGENT.to_string());
 
         let now_secs = SystemTime::now()
             .duration_since(UNIX_EPOCH)

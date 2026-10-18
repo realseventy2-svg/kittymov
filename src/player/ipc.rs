@@ -148,10 +148,14 @@ impl MpvController {
         }
 
         if let Some(ua) = stream.headers.get("User-Agent") {
-            // Strip any newline characters to avoid header injection
             let clean_ua: String = ua.chars().filter(|c| *c != '\r' && *c != '\n').collect();
             cmd.arg(format!("--user-agent={}", clean_ua));
+        } else {
+            cmd.arg("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
         }
+
+        // Disable unauthenticated ytdl scraper fallback on direct CDN streams to prevent secondary 429 errors
+        cmd.arg("--ytdl=no");
 
         let custom_headers: Vec<String> = stream
             .headers
