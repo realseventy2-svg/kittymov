@@ -3,15 +3,15 @@
 <div align="center">
 
 ```
- ██╗  ██╗██╗████████╗████████╗██╗   ██╗███╗   ███╗ ██████╗ ██╗   ██╗
+ ██╗  ██╗██╗████████╗██████████╗██╗   ██╗███╗   ███╗ ██████╗ ██╗   ██╗
  ██║ ██╔╝██║╚══██╔══╝╚══██╔══╝╚██╗ ██╔╝████╗ ████║██╔═══██╗██║   ██║
  █████╔╝ ██║   ██║      ██║    ╚████╔╝ ██╔████╔██║██║   ██║██║   ██║
  ██╔═██╗ ██║   ██║      ██║     ╚██╔╝  ██║╚██╔╝██║██║   ██║╚██╗ ██╔╝
  ██║  ██╗██║   ██║      ██║      ██║   ██║ ╚═╝ ██║╚██████╔╝ ╚████╔╝ 
- ╚═╝  ╚═╝╚═╝   ╚═╝      ╚═╝      ╚═╝   ╚═╝     ╚═╝ ╚═════╝   ╚═══╝  
+ ╚═╝  ╚═╝╚═╝   ╚═╝     ╚═╝      ╚═╝   ╚═╝    ╚═╝ ╚═════╝   ╚═══╝  
 ```
 
-### Modern Cyber-Minimalist Terminal Movie & TV Series Streaming Suite
+### A TUI-based Movie & TV-Series Streaming Application for Linux
 
 [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange?logo=rust)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -22,36 +22,63 @@
 
 ---
 
-**KittyMov** is a native, ultra-responsive Terminal UI for discovering, cataloging, and streaming Movies and TV Shows. Designed with a retro-futuristic dark cyber-minimalist aesthetic (obsidian canvas, neon magenta cursor, cyber-cyan double borders), high-speed concurrency, true 24-bit ANSI poster art, and an automated TV episode marathon engine.
+Hey there! **KittyMov** is a terminal streaming application written in Rust.
 
-Works seamlessly across all Linux distributions (CachyOS, Arch, Debian, Ubuntu, Fedora, Void, NixOS, etc.) and modern terminal emulators (Kitty, Alacritty, Ghostty, Foot, WezTerm, tmux).
+Firstly, I made this for my personal use until I decided to share it with other people who have the same issue or problems I encountered with alot of dead providers in some applications like these to watch movies, tv-series and anime without any playback issues.
 
----
-
-## ✨ Features
-
-- ⚡ **Native Rust Performance**: Sub-millisecond startup times, compiled release binary under `8 MB`, low RAM usage.
-- 🎨 **BENEXL Cyber-Minimalist Aesthetic**: Obsidian backdrop (`#0b0e14`), glowing cyber-cyan borders (`#00e5ff`), and high-density metadata tables.
-- 🖼️ **True 24-Bit Half-Block Posters**: Custom ANSI SGR tokenizer extracting both foreground and background colors (`38;2` and `48;2`) via `chafa` without terminal escape leakage.
-- 📺 **TV Episode Marathon Engine**: Seamless auto-play next episode with background pre-fetching during the final 20% of playback and dynamic injection via MPV IPC.
-- 🔄 **Anti-Expiration JIT Link Protection**: Resolves and refreshes HLS master playlist tokens just-in-time before playback to eliminate link expiration errors.
-- 💾 **Local SQLite Persistence**: Tracks watch history, resume timestamps, and favorites in `~/.config/kittymov/kittymov.db`.
-- 🔍 **Interactive Live Search & Episode Guide**: Season-by-season episode browsing with runtime, air date, and synopses.
+It runs in any Linux terminal (Kitty, Alacritty, Ghostty, Foot, WezTerm, tmux, etc.) and gives you a comfortable split-pane browser with cover art, ratings, episode guides, and multi-source streaming failover.
 
 ---
 
-## 🚀 Quick Start
+## What It Does
 
-### Installation
+- **Instant search & metadata**: Pulls titles, descriptions, ratings, genres, and cast details directly from TMDB without needing a browser.
+- **High-resolution terminal cover art**: Automatically downloads posters and converts them using `chafa` with Unicode 13 sextants and quadrants for crisp 24-bit color artwork. If your terminal doesn't support fancy symbols, it falls back to classic half-blocks or clean text-only mode.
+- **Multiple streaming providers**: Resolves video streams from multiple sources (such as VixSrc and LookMovie). If one server is slow or down, it automatically tries the next one, or lets you manually select your preferred server and quality with `s`.
+- **Subtitles that just work**: Automatically checks the stream provider for built-in subtitle tracks. If none are provided, it queries OpenSubtitles in the background. You can also pick specific languages (`t`) or adjust timing offsets in real time.
+- **Automatic episode alignment**: Animated shows and cartoons (like *Steven Universe*) frequently have different air dates compared to production or streaming orders. KittyMov automatically updates and aligns episode and season guides to match your selected primary provider, or you can cycle providers on the fly (`o`).
+- **Hands-off episode marathons**: When you're watching a TV series, it keeps track of your position and automatically queues up the next episode.
+- **Local history & bookmarks**: Everything stays on your machine. Your watch progress, bookmark list, and preferences are saved locally in SQLite so you can instantly resume where you left off.
+- **Beginner-friendly setup wizard**: If you launch it on a fresh system, it checks your environment, verifies dependencies, and helps you set your audio and subtitle preferences right away.
 
-#### Arch Linux / CachyOS (PKGBUILD)
+---
+
+## Requirements
+
+Before installing, make sure you have:
+
+1. **`mpv`** (Required) — The video player that handles the actual playback.
+2. **`chafa`** (Optional, but recommended) — Used for drawing poster artwork in your terminal. If you don't have it installed, KittyMov will simply run in text-only mode without crashing.
+
+On Arch Linux / CachyOS:
+```bash
+sudo pacman -S mpv chafa
+```
+
+On Debian / Ubuntu:
+```bash
+sudo apt install mpv chafa
+```
+
+On Fedora:
+```bash
+sudo dnf install mpv chafa
+```
+
+---
+
+## Installation
+
+### Method 1: Arch Linux / CachyOS (PKGBUILD)
+
 ```bash
 git clone https://github.com/realseventy2-svg/kittymov.git
 cd kittymov
 makepkg -si
 ```
 
-#### Cargo (Any Distribution)
+### Method 2: Building from source with Cargo
+
 ```bash
 git clone https://github.com/realseventy2-svg/kittymov.git
 cd kittymov
@@ -59,64 +86,137 @@ cargo build --release
 install -Dm755 target/release/kittymov ~/.local/bin/kittymov
 ```
 
-*Ensure dependencies are installed:*
-- `mpv` (video player)
-- `chafa` (poster graphics conversion)
+Make sure `~/.local/bin` is in your `$PATH`.
 
 ---
 
-## 🎮 Usage
+## How to Use It
 
+Launch the main interface:
 ```bash
-# Launch interactive TUI
 kittymov
+```
 
-# Direct search query on launch
-kittymov "Arcane"
+Jump straight into a search:
+```bash
+kittymov "Spirited Away"
 # or
-kittymov --search "Dune"
+kittymov --search "Arcane"
+```
 
-# Instantly resume your most recent watch
+Resume whatever you were watching last:
+```bash
 kittymov --resume
+```
+
+Run a system diagnosis to make sure your tools and paths are configured properly:
+```bash
+kittymov --doctor
+```
+
+Run the initial setup wizard again anytime:
+```bash
+kittymov --setup
 ```
 
 ---
 
-## ⌨️ Keybindings
+## Keyboard Shortcuts
 
-### Main Catalog
+You can press **`?`** or **`F1`** anywhere in the app to view the shortcut cheatsheet.
 
-| Key | Action |
+### Main Catalog & Navigation
+
+| Key | What it does |
 | :--- | :--- |
-| `1` | **Movies** tab (Trending movies) |
-| `2` | **Series** tab (Trending TV shows) |
-| `3` | **History** tab (Resume watching) |
-| `4` | **Bookmarks** tab (Saved titles) |
-| `/` | **Search** catalog (`Enter` to submit, `Esc` to cancel) |
-| `↑` / `k` | Move cursor up |
-| `↓` / `j` | Move cursor down |
-| `Enter` | Play movie or open **Episode Guide** |
-| `f` | Bookmark / Unbookmark title |
-| `a` | Toggle **Auto-Play Next Episode** (`ON` / `OFF`) |
+| `↑` / `k`, `↓` / `j` | Move selection up or down |
+| `1` | Show Trending Movies |
+| `2` | Show Trending TV Series |
+| `3` | Show Watch History |
+| `4` | Show Bookmarks |
+| `/` | Search titles (`Enter` to search, `Esc` to cancel) |
+| `Enter` | Play movie or open TV episode guide |
+| `s` | Open provider and quality selector |
+| `t` | Open subtitle language selector |
+| `d` | Switch audio mode between Sub and Dub |
+| `o` | Cycle primary provider (VidLink, VixSrc, HiAnime, LookMovie, Auto) |
+| `f` | Bookmark or unbookmark selected title |
+| `a` | Toggle auto-play next episode on or off |
+| `S` / `,` / `F2` | Open Settings menu |
 | `q` | Quit KittyMov |
 
 ### Episode Guide Modal
 
-| Key | Action |
+| Key | What it does |
 | :--- | :--- |
 | `←` / `h` / `[` | Previous season |
 | `→` / `l` / `]` | Next season |
-| `↑` / `k` | Previous episode |
-| `↓` / `j` | Next episode |
-| `Enter` | Launch episode in player |
-| `a` | Toggle Auto-Play mode |
-| `Esc` | Close modal |
+| `↑` / `k`, `↓` / `j` | Navigate episodes |
+| `Enter` | Start playing selected episode |
+| `s` | Pick provider and stream source for this episode |
+| `t` | Choose subtitle track |
+| `d` | Toggle Sub / Dub audio mode |
+| `o` | Cycle primary provider and update episode guide |
+| `Esc` | Close modal and go back |
+
+### Settings Menu
+
+| Key | What it does |
+| :--- | :--- |
+| `Tab` | Switch between category list and settings items |
+| `↑` / `k`, `↓` / `j` | Move through settings |
+| `←` / `→` / `Space` | Change value, cycle options, or toggle settings |
+| `/` | Filter settings by typing a keyword |
+| `r` | Reset the current category to factory defaults |
+| `Esc` | Back to category list or close settings |
 
 ---
 
-## ⚙️ Configuration
+## Questions & Answers (Q&A)
 
-Configuration is located at `~/.config/kittymov/config.json`:
+### Q: Why didn't subtitles show up when I started playing a video?
+**A:** Not every streaming source embeds subtitles directly inside the video stream. KittyMov handles this by querying OpenSubtitles as a fallback whenever the primary stream lacks a track for your language. You can also press **`t`** on any title or episode before starting playback to pick from available provider tracks or OpenSubtitles releases.
+
+### Q: The subtitles are a fraction of a second off. How do I fix the timing?
+**A:** You have two easy ways:
+1. Inside KittyMov, press **`S`** to open Settings, go to **Playback**, and adjust **Subtitle Delay Offset** (`sub_delay`).
+2. Inside `mpv` during playback, press **`z`** to decrease subtitle delay by 100ms or **`x`** to increase it by 100ms.
+
+### Q: How does KittyMov handle animated series with differing episode airings?
+**A:** Cartoons often air on television in a completely different sequence than their intended digital production order (for example, Steven Universe Season 3 airing *Watermelon Island* first on TV while streaming services list *Steven's Birthday*). KittyMov automatically updates and aligns the episode guide and season numbers to match whichever primary provider you select (e.g. VidLink, VixSrc, or Auto). You can also press **`o`** anytime to cycle providers and watch the guide instantly update.
+
+### Q: What if a stream fails to load or buffers endlessly?
+**A:** Sometimes a particular host is down or throttling requests. Press **`s`** before starting playback to open the **Provider & Quality** menu. From there, you can switch from `Auto` to a specific provider (like LookMovie or VixSrc) or select a specific stream resolution.
+
+### Q: The poster artwork looks pixelated or doesn't show up. Why?
+**A:** Make sure you have `chafa` installed on your system. KittyMov defaults to high-resolution Unicode 13 sextant and quadrant graphics. If your terminal font doesn't have these glyphs or you prefer a simpler look, press **`S`** -> **Appearance** -> **Poster Art Render Mode** and change it to **Half-Block** or **Off**.
+
+### Q: Where does KittyMov store my settings and history?
+**A:** It follows standard Linux XDG directories so nothing clutters your home folder:
+- Configuration: `~/.config/kittymov/config.json`
+- Watch history & bookmarks: `~/.config/kittymov/kittymov.db`
+- Cached posters: `~/.cache/kittymov/posters/`
+- Logs & diagnostics: `~/.local/state/kittymov/`
+
+### Q: Can I pass custom flags to mpv (like hardware acceleration or custom shaders)?
+**A:** Yes! Open `~/.config/kittymov/config.json` and look for the `mpv_extra_args` array. You can add any standard mpv arguments you want, such as:
+```json
+"mpv_extra_args": [
+  "--hwdec=auto",
+  "--save-position-on-quit",
+  "--force-window=immediate",
+  "--autofit=85%x85%"
+]
+```
+
+### Q: How do I clear the cached poster files to free up disk space?
+**A:** Press **`S`** to open Settings, navigate to **Storage**, and press **Enter** on **Poster Artwork Cache**. You can also run `rm -rf ~/.cache/kittymov/posters/*` from your terminal anytime.
+
+---
+
+## Configuration Reference
+
+Here is a look at what `~/.config/kittymov/config.json` looks like with default options:
 
 ```json
 {
@@ -124,7 +224,16 @@ Configuration is located at `~/.config/kittymov/config.json`:
   "auto_play_next": true,
   "audio_language": "eng",
   "sub_language": "eng",
+  "audio_mode": "dub",
   "hwdec": "auto",
+  "preferred_provider": "auto",
+  "default_tab": "movies",
+  "resume_on_startup": false,
+  "subtitle_augmentation": true,
+  "subtitle_source": "auto",
+  "sub_delay": 0.0,
+  "theme_name": "cyber",
+  "poster_render_mode": "high-res",
   "tmdb_api_key": "653bb8af90162bd98fc7ee32bcbbfb3d",
   "mpv_extra_args": [
     "--save-position-on-quit",
@@ -134,8 +243,11 @@ Configuration is located at `~/.config/kittymov/config.json`:
 }
 ```
 
+> [!NOTE]
+> If you have your own TMDB API key, you can either put it in `config.json` or export the `TMDB_API_KEY` environment variable in your shell profile (`~/.bashrc` or `~/.zshrc`).
+
 ---
 
-## 📜 License
+## License
 
 Distributed under the [MIT License](LICENSE).

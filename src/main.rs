@@ -1,27 +1,35 @@
 mod app;
 mod config;
+mod diagnostics;
 mod metadata;
 mod player;
 mod providers;
 mod storage;
+mod subtitles;
 mod ui;
 
-use std::io::stdout;
-use std::time::Duration;
 use clap::Parser;
 use crossterm::event::{Event, KeyCode, KeyEventKind};
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
+use crossterm::terminal::{
+    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+};
 use futures_util::StreamExt;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
+use std::io::stdout;
+use std::time::Duration;
 use tracing_subscriber::EnvFilter;
 
 use crate::app::{ActiveTab, App};
-use crate::config::load_config;
+use crate::config::{get_state_dir, load_config};
 use crate::storage::Database;
 
 #[derive(Parser, Debug)]
-#[command(name = "kittymov", version = "2.0.0", about = "Modern Cyber-Minimalist Terminal Movie & TV Streaming Suite")]
+#[command(
+    name = "kittymov",
+    version = "0.2.1",
+    about = "Modern Cyber-Minimalist Terminal Movie & TV Streaming Suite"
+)]
 struct Cli {
     #[arg(help = "Optional movie or series query to search immediately")]
     query: Option<String>,
@@ -31,27 +39,46 @@ struct Cli {
 
     #[arg(short, long, help = "Instantly resume the most recently watched title")]
     resume: bool,
+
+    #[arg(long, help = "Run environment diagnostics and dependency health check")]
+    doctor: bool,
+
+    #[arg(long, help = "Launch the beginner-friendly initial setup wizard")]
+    setup: bool,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Setup logging to ~/.local/state/kittymov/kittymov.log
-    let log_dir = dirs_fallback().join("kittymov");
+    let log_dir = get_state_dir();
     std::fs::create_dir_all(&log_dir).ok();
     let log_file = log_dir.join("kittymov.log");
-    if let Ok(file) = std::fs::OpenOptions::new().create(true).append(true).open(&log_file) {
+    if let Ok(file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_file)
+    {
         let _ = tracing_subscriber::fmt()
-            .with_env_filter(EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()))
+            .with_env_filter(
+                EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()),
+            )
             .with_writer(file)
             .try_init();
     }
 
     let cli = Cli::parse();
+    let is_first_run = crate::config::is_fresh_install();
     let cfg = load_config();
+
+    // Fast-path: --doctor flag
+    if cli.doctor {
+        return crate::diagnostics::run_doctor(&cfg).await;
+    }
+
     let db = Database::new()?;
 
-    // Fast-path: --resume flag
-    if cli.resume {
+    // Fast-path: --resume flag (unless --setup is explicitly passed)
+    if cli.resume && !cli.setup {
         if let Ok(Some(latest)) = db.get_latest_watch() {
             println!("Resuming: {}...", latest.title);
             let mut app = App::new(cfg, db);
@@ -63,7 +90,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     &latest.poster_path,
                     latest.season.unwrap_or(1),
                     latest.episode.unwrap_or(1),
-                ).await;
+                )
+                .await;
             } else {
                 app.play_movie(crate::metadata::MediaItem {
                     tmdb_id: latest.tmdb_id,
@@ -77,7 +105,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     duration_str: String::new(),
                     status: String::new(),
                     episodes_count: None,
-                }).await;
+                })
+                .await;
             }
             return Ok(());
         } else {
@@ -89,6 +118,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Set up crash-safe panic hook
     let default_panic = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
+        crate::ui::poster::clear_kitty_graphics();
         let _ = disable_raw_mode();
         let _ = crossterm::execute!(stdout(), LeaveAlternateScreen);
         default_panic(panic_info);
@@ -102,31 +132,88 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut terminal = Terminal::new(backend)?;
 
     let mut app = App::new(cfg, db);
+    if is_first_run || cli.setup {
+        app.open_setup_wizard();
+    }
     app.init().await;
 
     let initial_query = cli.search.or(cli.query);
     if let Some(q) = initial_query {
-        app.search_query = q;
-        app.perform_search().await;
+        if app.setup_wizard.is_none() {
+            app.search_query = q;
+            app.perform_search().await;
+        }
     }
 
     let mut reader = crossterm::event::EventStream::new();
     let mut tick_interval = tokio::time::interval(Duration::from_millis(33)); // ~30 FPS
 
     while !app.should_quit {
+        // Poll playback loading progress
+        if app.playback_loading.is_some() {
+            if let Some(event) = app.poll_playback_loading() {
+                match event {
+                    app::LoadingProgress::Ready {
+                        stream,
+                        display_title,
+                    } => {
+                        app.execute_player(&stream, &display_title).await;
+                    }
+                    app::LoadingProgress::Failed(err) => {
+                        let title = app
+                            .playback_loading
+                            .as_ref()
+                            .map(|l| l.title.clone())
+                            .unwrap_or_else(|| "Selected Title".to_string());
+                        app.status_message = format!("Stream unavailable: {}", err);
+                        app.error_dialog = Some(crate::app::ErrorDialogState {
+                            title: title.clone(),
+                            primary_message: format!("Could not find stream for \"{}\"", title),
+                            technical_details: err.clone(),
+                            suggestions: vec![
+                                "Press [s] to open Provider & Server selector to test individual sources.".to_string(),
+                                "This title may be a recent theatrical/regional release not yet hosted on streaming CDNs.".to_string(),
+                                "Check if an alternate title or series season entry is available in search.".to_string(),
+                            ],
+                        });
+                        app.playback_loading = None;
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         terminal.draw(|f| ui::render_ui(f, &app))?;
+
+        let (term_w, term_h) = terminal.size().map(|s| (s.width, s.height)).unwrap_or((120, 40));
+        app.render_kitty_poster_if_needed(term_w, term_h);
 
         tokio::select! {
             _ = tick_interval.tick() => {}
             Some(Ok(event)) = reader.next() => {
-                if let Event::Key(key) = event {
-                    if key.kind == KeyEventKind::Press {
-                        handle_key_event(&mut app, key.code, key.modifiers).await;
+                match event {
+                    Event::Key(key) => {
+                        if key.kind == KeyEventKind::Press {
+                            handle_key_event(&mut app, key.code, key.modifiers).await;
+                        }
                     }
+                    Event::Resize(_, _) => {
+                        crate::ui::poster::clear_kitty_graphics();
+                        app.kitty_poster_dirty = true;
+                        app.had_kitty_poster_drawn = false;
+                        app.update_poster().await;
+                    }
+                    _ => {}
                 }
+            }
+            _ = tokio::signal::ctrl_c() => {
+                app.should_quit = true;
             }
         }
     }
+
+    // Clean up any Kitty protocol raster graphics before switching terminal screen
+    crate::ui::poster::clear_kitty_graphics();
 
     // Restore terminal
     disable_raw_mode()?;
@@ -136,8 +223,338 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::event::KeyModifiers) {
-    // If in search input mode
+async fn handle_key_event(
+    app: &mut App,
+    code: KeyCode,
+    _modifiers: crossterm::event::KeyModifiers,
+) {
+    // -3. If Error Dialog is active, allow dismissal or jumping to provider selector
+    if app.error_dialog.is_some() {
+        match code {
+            KeyCode::Esc
+            | KeyCode::Enter
+            | KeyCode::Char(' ')
+            | KeyCode::Char('q')
+            | KeyCode::Char('x') => {
+                app.error_dialog = None;
+            }
+            KeyCode::Char('s') => {
+                app.error_dialog = None;
+                app.open_provider_modal_for_selected();
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    // -2. If Initial Setup Wizard is active
+    if app.setup_wizard.is_some() {
+        match code {
+            KeyCode::Esc | KeyCode::Char('q') => {
+                app.setup_wizard_cancel();
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                app.setup_wizard_prev_item();
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                app.setup_wizard_next_item();
+            }
+            KeyCode::Left | KeyCode::Char('h') => {
+                app.setup_wizard_change_value(false);
+            }
+            KeyCode::Right | KeyCode::Char('l') => {
+                app.setup_wizard_change_value(true);
+            }
+            KeyCode::Tab => {
+                app.setup_wizard_next_step();
+            }
+            KeyCode::BackTab => {
+                app.setup_wizard_prev_step();
+            }
+            KeyCode::Char('1') => {
+                app.setup_wizard_set_step(crate::app::SetupStep::Welcome);
+            }
+            KeyCode::Char('2') => {
+                app.setup_wizard_set_step(crate::app::SetupStep::Playback);
+            }
+            KeyCode::Char('3') => {
+                app.setup_wizard_set_step(crate::app::SetupStep::Subtitles);
+            }
+            KeyCode::Char('4') => {
+                app.setup_wizard_set_step(crate::app::SetupStep::Providers);
+            }
+            KeyCode::Char('5') => {
+                app.setup_wizard_set_step(crate::app::SetupStep::Appearance);
+            }
+            KeyCode::Char('6') => {
+                app.setup_wizard_set_step(crate::app::SetupStep::Complete);
+            }
+            KeyCode::Enter | KeyCode::Char(' ') => {
+                app.setup_wizard_confirm();
+                if app.setup_wizard.is_none() {
+                    app.update_poster().await;
+                }
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    // -1. If Playback Loading / Bootstrap screen is active
+    if app.playback_loading.is_some() {
+        match code {
+            KeyCode::Esc | KeyCode::Char('q') => {
+                app.cancel_playback_loading();
+            }
+            KeyCode::Char('F') | KeyCode::Char('f') => {
+                app.force_playback_fallback().await;
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    // 0. If Help modal is active
+    if app.show_help {
+        match code {
+            KeyCode::Esc
+            | KeyCode::Char('?')
+            | KeyCode::Char('q')
+            | KeyCode::Enter
+            | KeyCode::F(1) => {
+                app.show_help = false;
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    // 1. If Settings Modal is open
+    if let Some(ref s) = app.settings_modal.clone() {
+        // A. If confirmation dialog is active
+        if s.confirmation.is_some() {
+            match code {
+                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+                    app.settings_execute_confirmation().await;
+                }
+                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                    app.settings_cancel_confirmation();
+                }
+                _ => {}
+            }
+            return;
+        }
+
+        // B. If in search input mode
+        if s.is_searching {
+            match code {
+                KeyCode::Char(c) => {
+                    if let Some(ref mut sm) = app.settings_modal {
+                        sm.search_query.push(c);
+                        sm.item_idx = 0;
+                    }
+                }
+                KeyCode::Backspace => {
+                    if let Some(ref mut sm) = app.settings_modal {
+                        sm.search_query.pop();
+                        sm.item_idx = 0;
+                    }
+                }
+                KeyCode::Up => {
+                    app.settings_prev();
+                }
+                KeyCode::Down => {
+                    app.settings_next();
+                }
+                KeyCode::Enter => {
+                    app.settings_change_value(true);
+                }
+                KeyCode::Esc => {
+                    if let Some(ref mut sm) = app.settings_modal {
+                        if !sm.search_query.is_empty() {
+                            sm.search_query.clear();
+                        } else {
+                            sm.is_searching = false;
+                        }
+                    }
+                }
+                _ => {}
+            }
+            return;
+        }
+
+        // C. Normal Settings Navigation
+        match code {
+            KeyCode::Esc => {
+                if let Some(ref mut sm) = app.settings_modal {
+                    if !sm.search_query.is_empty() {
+                        sm.search_query.clear();
+                    } else if sm.active_pane == crate::app::SettingsPane::Content {
+                        sm.active_pane = crate::app::SettingsPane::Categories;
+                    } else {
+                        app.toggle_settings();
+                        if app.episode_modal.is_some() {
+                            app.refresh_episode_modal().await;
+                        }
+                        app.update_poster().await;
+                    }
+                }
+            }
+            KeyCode::Char('S') => {
+                app.toggle_settings();
+                if app.episode_modal.is_some() {
+                    app.refresh_episode_modal().await;
+                }
+                app.update_poster().await;
+            }
+            KeyCode::Tab | KeyCode::BackTab => {
+                app.settings_switch_pane();
+            }
+            KeyCode::Char('/') => {
+                if let Some(ref mut sm) = app.settings_modal {
+                    sm.is_searching = true;
+                }
+            }
+            KeyCode::Char('r') => {
+                app.settings_reset_current_category();
+            }
+            KeyCode::Char('?') => {
+                if let Some(ref mut sm) = app.settings_modal {
+                    sm.feedback_message = Some("Keys: Tab switch pane, ↑/↓ navigate, ←/→/Space change, r reset, / search, Esc close".to_string());
+                }
+            }
+            KeyCode::F(1) => {
+                app.toggle_help();
+            }
+            KeyCode::Home => {
+                if let Some(ref mut sm) = app.settings_modal {
+                    sm.item_idx = 0;
+                }
+            }
+            KeyCode::End => {
+                if let Some(ref mut sm) = app.settings_modal {
+                    match sm.active_pane {
+                        crate::app::SettingsPane::Categories => {
+                            sm.category_idx =
+                                crate::app::SettingsCategory::ALL.len().saturating_sub(1);
+                        }
+                        crate::app::SettingsPane::Content => {
+                            let cat = sm.current_category();
+                            sm.item_idx = cat.item_count().saturating_sub(1);
+                        }
+                    }
+                }
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                app.settings_prev();
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                app.settings_next();
+            }
+            KeyCode::Left | KeyCode::Char('h') => {
+                if let Some(ref sm) = app.settings_modal {
+                    if sm.active_pane == crate::app::SettingsPane::Content {
+                        app.settings_change_value(false);
+                    }
+                }
+            }
+            KeyCode::Right | KeyCode::Char('l') => {
+                if let Some(ref mut sm) = app.settings_modal {
+                    if sm.active_pane == crate::app::SettingsPane::Categories {
+                        sm.active_pane = crate::app::SettingsPane::Content;
+                    } else {
+                        app.settings_change_value(true);
+                    }
+                }
+            }
+            KeyCode::Char(' ') | KeyCode::Enter => {
+                app.settings_change_value(true);
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    // 2. If Subtitle Language Selector modal is open
+    if app.subtitle_modal.is_some() {
+        match code {
+            KeyCode::Esc => {
+                app.subtitle_modal = None;
+            }
+            KeyCode::Char('?') | KeyCode::F(1) => {
+                app.toggle_help();
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                app.subtitle_modal_prev();
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                app.subtitle_modal_next();
+            }
+            KeyCode::Enter => {
+                app.subtitle_modal_confirm();
+            }
+            KeyCode::Char('s') => {
+                app.cycle_subtitle_source();
+            }
+            KeyCode::Char('d') => {
+                app.toggle_audio_mode();
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    // 3. If Provider / Tracks selector screen is open
+    if app.provider_modal.is_some() {
+        match code {
+            KeyCode::Esc | KeyCode::Char('q') => {
+                app.provider_modal = None;
+            }
+            KeyCode::Char('?') | KeyCode::F(1) => {
+                app.toggle_help();
+            }
+            KeyCode::Tab => {
+                app.provider_modal_switch_pane();
+            }
+            KeyCode::Left | KeyCode::Char('h') => {
+                app.provider_modal_left();
+            }
+            KeyCode::Right | KeyCode::Char('l') => {
+                app.provider_modal_right();
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                app.provider_modal_prev();
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                app.provider_modal_next();
+            }
+            KeyCode::Char('1') => {
+                app.provider_modal_set_category(crate::app::ProviderModalCategory::Provider);
+            }
+            KeyCode::Char('2') => {
+                app.provider_modal_set_category(crate::app::ProviderModalCategory::Source);
+            }
+            KeyCode::Char('3') => {
+                app.provider_modal_set_category(crate::app::ProviderModalCategory::Quality);
+            }
+            KeyCode::Char('4') => {
+                app.provider_modal_set_category(crate::app::ProviderModalCategory::Subtitles);
+            }
+            KeyCode::Char('d') => {
+                app.toggle_audio_mode();
+            }
+            KeyCode::Char('f') => {
+                app.toggle_favorite().await;
+            }
+            KeyCode::Enter => {
+                app.provider_modal_confirm().await;
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    // 4. If in search input mode
     if app.is_searching {
         match code {
             KeyCode::Char(c) => {
@@ -157,11 +574,32 @@ async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::e
         return;
     }
 
-    // If Episode Modal is open
+    // 5. If Episode Modal is open
     if let Some(ref mut modal) = app.episode_modal {
         match code {
             KeyCode::Esc => {
                 app.episode_modal = None;
+            }
+            KeyCode::Char('?') | KeyCode::F(1) => {
+                app.toggle_help();
+            }
+            KeyCode::Char('s') => {
+                app.open_provider_modal_for_selected();
+            }
+            KeyCode::Char('o') => {
+                app.cycle_preferred_provider(true).await;
+            }
+            KeyCode::Char('t') => {
+                app.open_subtitle_modal().await;
+            }
+            KeyCode::Char('d') => {
+                app.toggle_audio_mode();
+            }
+            KeyCode::Char('S') => {
+                app.toggle_settings();
+                if app.episode_modal.is_some() {
+                    app.refresh_episode_modal().await;
+                }
             }
             KeyCode::Up | KeyCode::Char('k') => {
                 if modal.selected_episode_idx > 0 {
@@ -169,7 +607,9 @@ async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::e
                 }
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                if !modal.episodes.is_empty() && modal.selected_episode_idx + 1 < modal.episodes.len() {
+                if !modal.episodes.is_empty()
+                    && modal.selected_episode_idx + 1 < modal.episodes.len()
+                {
                     modal.selected_episode_idx += 1;
                 }
             }
@@ -183,13 +623,18 @@ async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::e
                         if let Some(ref map) = modal.all_season_episodes {
                             modal.episodes = map.get(&s_num).cloned().unwrap_or_default();
                         } else {
-                            modal.episodes = app.tmdb.get_season_episodes(tmdb_id, s_num).await.unwrap_or_default();
+                            modal.episodes = app
+                                .tmdb
+                                .get_season_episodes(tmdb_id, s_num)
+                                .await
+                                .unwrap_or_default();
                         }
                     }
                 }
             }
             KeyCode::Right | KeyCode::Char('l') | KeyCode::Char(']') => {
-                if !modal.seasons.is_empty() && modal.selected_season_idx + 1 < modal.seasons.len() {
+                if !modal.seasons.is_empty() && modal.selected_season_idx + 1 < modal.seasons.len()
+                {
                     modal.selected_season_idx += 1;
                     modal.selected_episode_idx = 0;
                     if let Some(s) = modal.seasons.get(modal.selected_season_idx) {
@@ -198,7 +643,11 @@ async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::e
                         if let Some(ref map) = modal.all_season_episodes {
                             modal.episodes = map.get(&s_num).cloned().unwrap_or_default();
                         } else {
-                            modal.episodes = app.tmdb.get_season_episodes(tmdb_id, s_num).await.unwrap_or_default();
+                            modal.episodes = app
+                                .tmdb
+                                .get_season_episodes(tmdb_id, s_num)
+                                .await
+                                .unwrap_or_default();
                         }
                     }
                 }
@@ -206,18 +655,29 @@ async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::e
             KeyCode::Enter => {
                 app.on_enter().await;
             }
+            KeyCode::Char('p') => {
+                app.quick_play_selected().await;
+            }
             KeyCode::Char('a') => {
                 app.cfg.auto_play_next = !app.cfg.auto_play_next;
+                let _ = app.cfg.save();
+                app.status_message = format!(
+                    "Auto-Play Next: {}",
+                    if app.cfg.auto_play_next { "ON" } else { "OFF" }
+                );
             }
             _ => {}
         }
         return;
     }
 
-    // Main view navigation
+    // 6. Main view navigation
     match code {
         KeyCode::Char('q') => {
             app.should_quit = true;
+        }
+        KeyCode::Char('?') | KeyCode::F(1) => {
+            app.toggle_help();
         }
         KeyCode::Char('/') => {
             app.is_searching = true;
@@ -244,19 +704,38 @@ async fn handle_key_event(app: &mut App, code: KeyCode, _modifiers: crossterm::e
         KeyCode::Enter => {
             app.on_enter().await;
         }
+        KeyCode::Char('p') => {
+            app.quick_play_selected().await;
+        }
+        KeyCode::Char('s') => {
+            app.open_provider_modal_for_selected();
+        }
+        KeyCode::Char('t') => {
+            app.open_subtitle_modal().await;
+        }
+        KeyCode::Char('d') => {
+            app.toggle_audio_mode();
+        }
+        KeyCode::Char('o') => {
+            app.cycle_preferred_provider(true).await;
+        }
+        KeyCode::Char('S') | KeyCode::F(2) | KeyCode::Char(',') => {
+            app.toggle_settings();
+            if app.episode_modal.is_some() {
+                app.refresh_episode_modal().await;
+            }
+        }
         KeyCode::Char('f') => {
             app.toggle_favorite().await;
         }
         KeyCode::Char('a') => {
             app.cfg.auto_play_next = !app.cfg.auto_play_next;
-            app.status_message = format!("Auto-Play Next: {}", if app.cfg.auto_play_next { "ON" } else { "OFF" });
+            let _ = app.cfg.save();
+            app.status_message = format!(
+                "Auto-Play Next: {}",
+                if app.cfg.auto_play_next { "ON" } else { "OFF" }
+            );
         }
         _ => {}
     }
-}
-
-fn dirs_fallback() -> std::path::PathBuf {
-    std::env::var_os("HOME")
-        .map(|h| std::path::PathBuf::from(h).join(".local/state"))
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
 }

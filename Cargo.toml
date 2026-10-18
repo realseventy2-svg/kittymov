@@ -1,6 +1,6 @@
 [package]
 name = "kittymov"
-version = "2.0.0"
+version = "0.2.1"
 edition = "2021"
 authors = ["realseventy2-svg <realseventy2@gmail.com>"]
 description = "Modern Cyber-Minimalist Terminal Movie and TV Series Streaming Suite"
@@ -9,7 +9,7 @@ description = "Modern Cyber-Minimalist Terminal Movie and TV Series Streaming Su
 ratatui = "0.29"
 crossterm = { version = "0.28", features = ["event-stream"] }
 tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip", "brotli"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip", "brotli", "cookies"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -22,6 +22,7 @@ futures-util = "0.3"
 chrono = "0.4"
 url = "2.5"
 base64 = "0.22"
+crypto_secretbox = "0.1.1"
 
 [profile.release]
 opt-level = 3

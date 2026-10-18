@@ -1,6 +1,6 @@
 # Maintainer: realseventy2-svg <realseventy2@gmail.com>
 pkgname=kittymov
-pkgver=2.0.0
+pkgver=0.2.1
 pkgrel=1
 pkgdesc="Modern Cyber-Minimalist Terminal Movie & TV Streaming Suite"
 arch=('x86_64')

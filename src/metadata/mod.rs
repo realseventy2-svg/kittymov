@@ -1,2 +1,2 @@
 pub mod tmdb;
-pub use tmdb::{TmdbClient, MediaItem, TvSeason, TvEpisode};
+pub use tmdb::{MediaItem, TmdbClient, TvEpisode, TvSeason};

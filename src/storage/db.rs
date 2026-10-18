@@ -1,6 +1,6 @@
+use crate::config::get_config_dir;
 use rusqlite::{params, Connection, Result};
 use std::path::PathBuf;
-use crate::config::get_config_dir;
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -53,6 +53,21 @@ impl Database {
         Ok(s)
     }
 
+    #[allow(dead_code)]
+    pub fn in_memory() -> Result<Self> {
+        let temp_dir = std::env::temp_dir();
+        let db_path = temp_dir.join(format!(
+            "kittymov_test_{}.db",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let s = Self { db_path };
+        s.init_tables()?;
+        Ok(s)
+    }
+
     fn conn(&self) -> Result<Connection> {
         Connection::open(&self.db_path)
     }
@@ -95,6 +110,7 @@ impl Database {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn record_watch(
         &self,
         tmdb_id: i64,
@@ -175,6 +191,7 @@ impl Database {
         Ok(list.into_iter().next())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn toggle_favorite(
         &self,
         tmdb_id: i64,
@@ -214,17 +231,47 @@ impl Database {
                 "SELECT EXISTS(SELECT 1 FROM favorites WHERE tmdb_id = ?1 AND media_type = ?2)",
                 params![tmdb_id, media_type],
                 |row| row.get(0),
-            ).unwrap_or(false)
+            )
+            .unwrap_or(false)
         } else {
             false
         }
+    }
+
+    pub fn is_watched(&self, tmdb_id: i64, media_type: &str) -> bool {
+        if let Ok(conn) = self.conn() {
+            conn.query_row(
+                "SELECT EXISTS(SELECT 1 FROM history WHERE tmdb_id = ?1 AND media_type = ?2)",
+                params![tmdb_id, media_type],
+                |row| row.get(0),
+            )
+            .unwrap_or(false)
+        } else {
+            false
+        }
+    }
+
+    pub fn get_watched_episodes(&self, tmdb_id: i64, season: i32) -> std::collections::HashSet<i32> {
+        let mut set = std::collections::HashSet::new();
+        if let Ok(conn) = self.conn() {
+            if let Ok(mut stmt) = conn.prepare(
+                "SELECT episode FROM history WHERE tmdb_id = ?1 AND season = ?2 AND episode > 0"
+            ) {
+                if let Ok(rows) = stmt.query_map(params![tmdb_id, season], |row| row.get(0)) {
+                    for r in rows.flatten() {
+                        set.insert(r);
+                    }
+                }
+            }
+        }
+        set
     }
 
     pub fn get_favorites(&self) -> Result<Vec<FavoriteEntry>> {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
             "SELECT tmdb_id, media_type, title, year, poster_path, rating, overview, added_at 
-             FROM favorites ORDER BY added_at DESC"
+             FROM favorites ORDER BY added_at DESC",
         )?;
 
         let rows = stmt.query_map([], |row| {
@@ -245,5 +292,20 @@ impl Database {
             list.push(r?);
         }
         Ok(list)
+    }
+
+    pub fn get_history_count(&self) -> usize {
+        if let Ok(conn) = self.conn() {
+            conn.query_row("SELECT COUNT(*) FROM history", [], |row| row.get(0))
+                .unwrap_or(0)
+        } else {
+            0
+        }
+    }
+
+    pub fn clear_history(&self) -> Result<usize> {
+        let conn = self.conn()?;
+        let count = conn.execute("DELETE FROM history", [])?;
+        Ok(count)
     }
 }
