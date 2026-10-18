@@ -151,17 +151,22 @@ impl MpvController {
             let clean_ua: String = ua.chars().filter(|c| *c != '\r' && *c != '\n').collect();
             cmd.arg(format!("--user-agent={}", clean_ua));
         } else {
-            cmd.arg("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
+            cmd.arg("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36");
         }
 
         // Disable unauthenticated ytdl scraper fallback on direct CDN streams to prevent secondary 429 errors
         cmd.arg("--ytdl=no");
 
+        // Enable demuxer auto-reconnect on streamed network error (matching Kunai Movie TUI resilience)
+        cmd.arg("--demuxer-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_delay_max=3,reconnect_max_retries=5");
+
         let custom_headers: Vec<String> = stream
             .headers
             .iter()
-            .filter(|(k, _)| {
-                !k.eq_ignore_ascii_case("user-agent") && !k.eq_ignore_ascii_case("referer")
+            .filter(|(k, v)| {
+                !k.eq_ignore_ascii_case("user-agent")
+                    && !k.eq_ignore_ascii_case("referer")
+                    && !v.trim().is_empty()
             })
             .map(|(k, v)| {
                 let clean_k: String = k

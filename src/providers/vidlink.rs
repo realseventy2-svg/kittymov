@@ -38,6 +38,9 @@ pub struct VidLinkStream {
     #[serde(rename = "type")]
     pub stream_type: Option<String>,
     pub playlist: Option<String>,
+    #[serde(rename = "playlistHeaders")]
+    pub playlist_headers: Option<HashMap<String, String>>,
+    pub headers: Option<HashMap<String, String>>,
     pub qualities: Option<HashMap<String, VidLinkQuality>>,
     pub captions: Option<Vec<VidLinkCaption>>,
     #[serde(rename = "TTL")]
@@ -110,6 +113,63 @@ impl VidLinkProvider {
         Ok(URL_SAFE_NO_PAD.encode(&full_payload))
     }
 
+    /// Fetches an encrypted token from enc-dec.app as a fallback
+    pub async fn fetch_remote_token(&self, tmdb_id: &str) -> Result<String, String> {
+        #[derive(Deserialize)]
+        struct EncDecResponse {
+            result: Option<String>,
+        }
+        let url = format!("https://enc-dec.app/api/enc-vidlink?text={}", tmdb_id);
+        let resp = self
+            .client
+            .get(&url)
+            .header("User-Agent", VIDLINK_USER_AGENT)
+            .header("Accept", "application/json")
+            .timeout(Duration::from_secs(5))
+            .send()
+            .await
+            .map_err(|e| format!("enc-dec.app request failed: {}", e))?;
+
+        if !resp.status().is_success() {
+            return Err(format!("enc-dec.app returned HTTP {}", resp.status()));
+        }
+
+        let data: EncDecResponse = resp
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse enc-dec.app response: {}", e))?;
+
+        data.result
+            .ok_or_else(|| "enc-dec.app returned empty encrypted token".to_string())
+    }
+
+    async fn fetch_vidlink_api(
+        &self,
+        is_movie: bool,
+        token: &str,
+        season: Option<i32>,
+        episode: Option<i32>,
+    ) -> Result<reqwest::Response, reqwest::Error> {
+        let api_url = if is_movie {
+            format!("https://vidlink.pro/api/b/movie/{}?multiLang=1", token)
+        } else {
+            let s = season.unwrap_or(1);
+            let ep = episode.unwrap_or(1);
+            format!("https://vidlink.pro/api/b/tv/{}/{}/{}?multiLang=1", token, s, ep)
+        };
+
+        self.client
+            .get(&api_url)
+            .header("User-Agent", VIDLINK_USER_AGENT)
+            .header("Origin", VIDLINK_ORIGIN)
+            .header("Referer", VIDLINK_REFERER)
+            .header("x-playback-environment", "webkit")
+            .header("Accept", "*/*")
+            .header("Accept-Language", "en-US,en;q=0.9")
+            .send()
+            .await
+    }
+
     /// Resolves stream with optional quality preference ("1080p", "720p", "480p", "360p", or "auto")
     pub async fn resolve_with_quality(
         &self,
@@ -118,26 +178,32 @@ impl VidLinkProvider {
     ) -> Result<StreamCandidate, String> {
         let is_movie = req.media_type.to_lowercase() == "movie";
         let tmdb_id_str = req.tmdb_id.to_string();
-        let token = self.encrypt_token(&tmdb_id_str)?;
 
-        let api_url = if is_movie {
-            format!("https://vidlink.pro/api/b/movie/{}?multiLang=1", token)
-        } else {
-            let s = req.season.unwrap_or(1);
-            let ep = req.episode.unwrap_or(1);
-            format!("https://vidlink.pro/api/b/tv/{}/{}/{}?multiLang=1", token, s, ep)
+        let initial_token = match self.encrypt_token(&tmdb_id_str) {
+            Ok(t) => t,
+            Err(_) => self.fetch_remote_token(&tmdb_id_str).await?,
         };
 
+        let mut resp = self
+            .fetch_vidlink_api(is_movie, &initial_token, req.season, req.episode)
+            .await;
 
-        let resp = self
-            .client
-            .get(&api_url)
-            .header("User-Agent", VIDLINK_USER_AGENT)
-            .header("Origin", VIDLINK_ORIGIN)
-            .header("Referer", VIDLINK_REFERER)
-            .send()
-            .await
-            .map_err(|e| format!("VidLink HTTP request failed: {}", e))?;
+        // If local token was rejected or not found, retry once via enc-dec.app
+        if resp
+            .as_ref()
+            .map(|r| r.status().as_u16() == 404 || r.status().as_u16() == 403)
+            .unwrap_or(false)
+        {
+            if let Ok(remote_token) = self.fetch_remote_token(&tmdb_id_str).await {
+                if remote_token != initial_token {
+                    resp = self
+                        .fetch_vidlink_api(is_movie, &remote_token, req.season, req.episode)
+                        .await;
+                }
+            }
+        }
+
+        let resp = resp.map_err(|e| format!("VidLink HTTP request failed: {}", e))?;
 
         if resp.status().as_u16() == 404 {
             return Err(format!("VidLink: Title '{}' not found (HTTP 404)", req.title));
@@ -181,11 +247,22 @@ impl VidLinkProvider {
             }
         }
 
-        // The underlying CDN (bcdn.hakunaymatata.com) blocks requests bearing the vidlink.pro
-        // Referer with HTTP 429. Supplying a standard browser User-Agent without referer
-        // ensures ffmpeg connects cleanly without triggering anti-bot or anti-hotlink blocks.
+        // Configure player headers for robust CDN delivery
         let mut headers = HashMap::new();
         headers.insert("User-Agent".to_string(), VIDLINK_USER_AGENT.to_string());
+        headers.insert("Origin".to_string(), VIDLINK_ORIGIN.to_string());
+        headers.insert("Referer".to_string(), VIDLINK_REFERER.to_string());
+
+        if let Some(ref pl_headers) = stream_info.playlist_headers {
+            for (k, v) in pl_headers {
+                headers.insert(k.clone(), v.clone());
+            }
+        }
+        if let Some(ref s_headers) = stream_info.headers {
+            for (k, v) in s_headers {
+                headers.insert(k.clone(), v.clone());
+            }
+        }
 
         let now_secs = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -211,10 +288,17 @@ impl VidLinkProvider {
         stream_info: &VidLinkStream,
         pref: Option<&str>,
     ) -> Result<(String, String), String> {
-        // If playlist exists and qualities is empty, use playlist directly
+        // Prefer DASH (.mpd) or HLS (.m3u8) playlists as they deliver high bitrate CDN chunks
         if let Some(ref pl) = stream_info.playlist {
-            if stream_info.qualities.is_none() || stream_info.qualities.as_ref().map(|q| q.is_empty()).unwrap_or(false) {
-                return Ok((pl.clone(), "Auto HLS".to_string()));
+            if !pl.is_empty() {
+                let quality_label = if pl.contains(".mpd") {
+                    "1080p DASH (Adaptive)".to_string()
+                } else if pl.contains(".m3u8") {
+                    "1080p HLS (Adaptive)".to_string()
+                } else {
+                    "Auto HD (Adaptive)".to_string()
+                };
+                return Ok((pl.clone(), quality_label));
             }
         }
 
@@ -224,9 +308,6 @@ impl VidLinkProvider {
             .ok_or_else(|| "VidLink: No streaming qualities or playlist found".to_string())?;
 
         if qualities.is_empty() {
-            if let Some(ref pl) = stream_info.playlist {
-                return Ok((pl.clone(), "Auto HLS".to_string()));
-            }
             return Err("VidLink: Empty qualities list in stream".to_string());
         }
 
@@ -242,7 +323,7 @@ impl VidLinkProvider {
             "720" => &["720", "1080", "480", "360"],
             "480" => &["480", "720", "360", "1080"],
             "360" => &["360", "480", "720", "1080"],
-            _ => &["1080", "720", "480", "360"], // Default to best HD
+            _ => &["1080", "720", "480", "360"],
         };
 
         for &q in try_order {
@@ -260,10 +341,6 @@ impl VidLinkProvider {
                 let label = format!("{}p", q_name);
                 return Ok((q_info.url.clone(), label));
             }
-        }
-
-        if let Some(ref pl) = stream_info.playlist {
-            return Ok((pl.clone(), "Auto HLS".to_string()));
         }
 
         Err("VidLink: Could not resolve valid stream URL from qualities".to_string())
