@@ -156,7 +156,7 @@ pub fn render_resume_modal(
 
     let filter_sub_line = Line::from(vec![
         Span::styled(
-            "Type to filter • / opens commands",
+            "Type to filter",
             Style::default().fg(Theme::TEXT_MUTED),
         ),
         Span::styled(
