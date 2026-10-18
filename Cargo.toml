@@ -1,6 +1,6 @@
 [package]
 name = "kittymov"
-version = "2.0.0"
+version = "0.2.1"
 edition = "2021"
 authors = ["realseventy2-svg <realseventy2@gmail.com>"]
 description = "Modern Cyber-Minimalist Terminal Movie and TV Series Streaming Suite"

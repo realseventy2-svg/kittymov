@@ -27,7 +27,7 @@ use crate::storage::Database;
 #[derive(Parser, Debug)]
 #[command(
     name = "kittymov",
-    version = "2.0.0",
+    version = "0.2.1",
     about = "Modern Cyber-Minimalist Terminal Movie & TV Streaming Suite"
 )]
 struct Cli {
@@ -393,12 +393,18 @@ async fn handle_key_event(
                         sm.active_pane = crate::app::SettingsPane::Categories;
                     } else {
                         app.toggle_settings();
+                        if app.episode_modal.is_some() {
+                            app.refresh_episode_modal().await;
+                        }
                         app.update_poster().await;
                     }
                 }
             }
             KeyCode::Char('S') => {
                 app.toggle_settings();
+                if app.episode_modal.is_some() {
+                    app.refresh_episode_modal().await;
+                }
                 app.update_poster().await;
             }
             KeyCode::Tab | KeyCode::BackTab => {
@@ -581,7 +587,7 @@ async fn handle_key_event(
                 app.open_provider_modal_for_selected();
             }
             KeyCode::Char('o') => {
-                app.toggle_episode_order().await;
+                app.cycle_preferred_provider(true).await;
             }
             KeyCode::Char('t') => {
                 app.open_subtitle_modal().await;
@@ -591,6 +597,9 @@ async fn handle_key_event(
             }
             KeyCode::Char('S') => {
                 app.toggle_settings();
+                if app.episode_modal.is_some() {
+                    app.refresh_episode_modal().await;
+                }
             }
             KeyCode::Up | KeyCode::Char('k') => {
                 if modal.selected_episode_idx > 0 {
@@ -707,8 +716,14 @@ async fn handle_key_event(
         KeyCode::Char('d') => {
             app.toggle_audio_mode();
         }
+        KeyCode::Char('o') => {
+            app.cycle_preferred_provider(true).await;
+        }
         KeyCode::Char('S') | KeyCode::F(2) | KeyCode::Char(',') => {
             app.toggle_settings();
+            if app.episode_modal.is_some() {
+                app.refresh_episode_modal().await;
+            }
         }
         KeyCode::Char('f') => {
             app.toggle_favorite().await;

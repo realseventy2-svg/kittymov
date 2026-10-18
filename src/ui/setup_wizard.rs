@@ -544,14 +544,7 @@ fn render_providers_step(f: &mut Frame, area: Rect, selected_idx: usize, cfg: &C
             },
         ),
         (
-            "2. TV Episode Order Mode",
-            match cfg.episode_order.as_str() {
-                "streaming" => "Alternate / Production Order (Digital Volumes)",
-                _ => "Broadcast Order (Canonical TV Airings • Recommended)",
-            },
-        ),
-        (
-            "3. Subtitle Source Preference",
+            "2. Subtitle Source Preference",
             match cfg.subtitle_source.as_str() {
                 "provider" => "Provider Native Only",
                 "wyzie" | "opensubtitles" => "Wyzie Subs Cloud Only",
@@ -596,9 +589,8 @@ fn render_providers_step(f: &mut Frame, area: Rect, selected_idx: usize, cfg: &C
     f.render_widget(Paragraph::new(row_lines), chunks[0]);
 
     let hint = match selected_idx {
-        0 => "Auto Fallback queries VixSrc first for ultra-fast startup, and automatically fails over to LookMovie if an endpoint is offline.",
-        1 => "Broadcast Order matches standard TV air dates across all providers, ensuring consistent season and episode alignments.",
-        2 => "Auto subtitle mode prioritizes pre-synced native .vtt tracks from the stream encode, seamlessly augmenting with Wyzie Subs when absent.",
+        0 => "VidLink offers direct 1080p playback and multi-language subs. Auto Fallback prioritizes VidLink and seamlessly falls back if an endpoint is offline.",
+        1 => "Auto subtitle mode prioritizes pre-synced native .vtt tracks from the stream encode, seamlessly augmenting with Wyzie Subs when absent.",
         _ => "Press [Enter] or [→] to proceed to the Appearance & Theme configuration step.",
     };
 
@@ -612,7 +604,7 @@ fn render_providers_step(f: &mut Frame, area: Rect, selected_idx: usize, cfg: &C
         .wrap(Wrap { trim: true });
     f.render_widget(hint_p, chunks[1]);
 
-    let is_btn_sel = selected_idx == 3;
+    let is_btn_sel = selected_idx == 2;
     let btn_style = if is_btn_sel {
         Style::default()
             .fg(Theme::BG)
@@ -818,9 +810,8 @@ fn render_complete_step(f: &mut Frame, area: Rect, selected_idx: usize, cfg: &Co
             ),
             Span::styled(
                 format!(
-                    "{} (TV Order: {})",
-                    cfg.preferred_provider.to_uppercase(),
-                    cfg.episode_order.to_uppercase()
+                    "{} (Auto Episode Alignment)",
+                    cfg.preferred_provider.to_uppercase()
                 ),
                 Style::default().fg(Theme::TEXT_BODY),
             ),

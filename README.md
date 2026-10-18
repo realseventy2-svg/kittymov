@@ -36,7 +36,7 @@ It runs in any Linux terminal (Kitty, Alacritty, Ghostty, Foot, WezTerm, tmux, e
 - **High-resolution terminal cover art**: Automatically downloads posters and converts them using `chafa` with Unicode 13 sextants and quadrants for crisp 24-bit color artwork. If your terminal doesn't support fancy symbols, it falls back to classic half-blocks or clean text-only mode.
 - **Multiple streaming providers**: Resolves video streams from multiple sources (such as VixSrc and LookMovie). If one server is slow or down, it automatically tries the next one, or lets you manually select your preferred server and quality with `s`.
 - **Subtitles that just work**: Automatically checks the stream provider for built-in subtitle tracks. If none are provided, it queries OpenSubtitles in the background. You can also pick specific languages (`t`) or adjust timing offsets in real time.
-- **Broadcast vs. Streaming episode orders**: Animated shows and cartoons (like *Steven Universe*) frequently have different air dates compared to production or streaming orders. You can toggle between Broadcast and Streaming ordering with a single key (`o`).
+- **Automatic episode alignment**: Animated shows and cartoons (like *Steven Universe*) frequently have different air dates compared to production or streaming orders. KittyMov automatically updates and aligns episode and season guides to match your selected primary provider, or you can cycle providers on the fly (`o`).
 - **Hands-off episode marathons**: When you're watching a TV series, it keeps track of your position and automatically queues up the next episode.
 - **Local history & bookmarks**: Everything stays on your machine. Your watch progress, bookmark list, and preferences are saved locally in SQLite so you can instantly resume where you left off.
 - **Beginner-friendly setup wizard**: If you launch it on a fresh system, it checks your environment, verifies dependencies, and helps you set your audio and subtitle preferences right away.
@@ -139,7 +139,7 @@ You can press **`?`** or **`F1`** anywhere in the app to view the shortcut cheat
 | `s` | Open provider and quality selector |
 | `t` | Open subtitle language selector |
 | `d` | Switch audio mode between Sub and Dub |
-| `o` | Toggle TV episode ordering (Broadcast ↔ Streaming) |
+| `o` | Cycle primary provider (VidLink, VixSrc, HiAnime, LookMovie, Auto) |
 | `f` | Bookmark or unbookmark selected title |
 | `a` | Toggle auto-play next episode on or off |
 | `S` / `,` / `F2` | Open Settings menu |
@@ -156,7 +156,7 @@ You can press **`?`** or **`F1`** anywhere in the app to view the shortcut cheat
 | `s` | Pick provider and stream source for this episode |
 | `t` | Choose subtitle track |
 | `d` | Toggle Sub / Dub audio mode |
-| `o` | Toggle Broadcast vs. Streaming episode list |
+| `o` | Cycle primary provider and update episode guide |
 | `Esc` | Close modal and go back |
 
 ### Settings Menu
@@ -182,8 +182,8 @@ You can press **`?`** or **`F1`** anywhere in the app to view the shortcut cheat
 1. Inside KittyMov, press **`S`** to open Settings, go to **Playback**, and adjust **Subtitle Delay Offset** (`sub_delay`).
 2. Inside `mpv` during playback, press **`z`** to decrease subtitle delay by 100ms or **`x`** to increase it by 100ms.
 
-### Q: Why are episodes out of order for animated series (like Steven Universe)?
-**A:** Cartoons often air on television in a completely different sequence than their intended production order (for example, Steven Universe Season 3 airing *Watermelon Island* first on TV while streaming services list *Steven's Birthday*). Press **`o`** in the series view or episode modal to switch between **Broadcast Order** and **Alternate / Streaming Order**. KittyMov will remember your preference.
+### Q: How does KittyMov handle animated series with differing episode airings?
+**A:** Cartoons often air on television in a completely different sequence than their intended digital production order (for example, Steven Universe Season 3 airing *Watermelon Island* first on TV while streaming services list *Steven's Birthday*). KittyMov automatically updates and aligns the episode guide and season numbers to match whichever primary provider you select (e.g. VidLink, VixSrc, or Auto). You can also press **`o`** anytime to cycle providers and watch the guide instantly update.
 
 ### Q: What if a stream fails to load or buffers endlessly?
 **A:** Sometimes a particular host is down or throttling requests. Press **`s`** before starting playback to open the **Provider & Quality** menu. From there, you can switch from `Auto` to a specific provider (like LookMovie or VixSrc) or select a specific stream resolution.
@@ -232,7 +232,6 @@ Here is a look at what `~/.config/kittymov/config.json` looks like with default 
   "subtitle_augmentation": true,
   "subtitle_source": "auto",
   "sub_delay": 0.0,
-  "episode_order": "broadcast",
   "theme_name": "cyber",
   "poster_render_mode": "high-res",
   "tmdb_api_key": "653bb8af90162bd98fc7ee32bcbbfb3d",

@@ -22,8 +22,6 @@ pub struct Config {
     pub subtitle_source: String,
     #[serde(default)]
     pub sub_delay: f64,
-    #[serde(default = "default_episode_order")]
-    pub episode_order: String,
     #[serde(default = "default_theme_name")]
     pub theme_name: String,
     #[serde(default = "default_poster_render_mode")]
@@ -38,10 +36,6 @@ pub struct Config {
 
 fn default_subtitle_source() -> String {
     "auto".to_string()
-}
-
-fn default_episode_order() -> String {
-    "broadcast".to_string()
 }
 
 fn default_audio_mode() -> String {
@@ -102,7 +96,6 @@ impl Default for Config {
             subtitle_augmentation: default_subtitle_augmentation(),
             subtitle_source: default_subtitle_source(),
             sub_delay: 0.0,
-            episode_order: default_episode_order(),
             theme_name: default_theme_name(),
             poster_render_mode: default_poster_render_mode(),
             preferred_quality: default_preferred_quality(),

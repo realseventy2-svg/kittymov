@@ -125,7 +125,7 @@ pub fn render_ui(f: &mut Frame, app: &App) {
             &watched_eps,
             app.cfg.auto_play_next,
             &app.cfg.audio_mode,
-            &app.cfg.episode_order,
+            &app.cfg.preferred_provider,
         );
     }
 

@@ -591,14 +591,6 @@ fn get_category_rows(
                 "Automatically resume playback of your most recently watched movie or series episode on launch.",
             ),
             (
-                "TV Episode Order Mode",
-                SettingWidget::Select(match cfg.episode_order.to_lowercase().as_str() {
-                    "streaming" => "Alternate / Production Order (Digital Groups)".to_string(),
-                    _ => "Broadcast Order (Canonical • Recommended)".to_string(),
-                }),
-                "TV episode listing scheme. Broadcast matches canonical TV airings (default across providers). Alternate switches to DVD/digital production order.",
-            ),
-            (
                 "Player Engine",
                 SettingWidget::Info("mpv (External High-Performance Player)".to_string()),
                 "High-performance video renderer powering smooth playback, caching, and subtitle sync.",

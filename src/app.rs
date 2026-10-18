@@ -789,7 +789,7 @@ impl SettingsCategory {
 
     pub fn item_count(&self) -> usize {
         match self {
-            SettingsCategory::General => 5,
+            SettingsCategory::General => 4,
             SettingsCategory::Playback => 8,
             SettingsCategory::Providers => 5,
             SettingsCategory::Appearance => 3,
@@ -889,17 +889,6 @@ pub fn get_all_settings_metadata(cfg: &Config) -> Vec<SettingMatch> {
             category: SettingsCategory::General,
             category_idx: 0,
             item_idx: 2,
-            label: "TV Episode Order Mode",
-            value_str: match cfg.episode_order.to_lowercase().as_str() {
-                "streaming" => "Alternate / Production Order (Digital Groups)".to_string(),
-                _ => "Broadcast Order (Canonical • Recommended)".to_string(),
-            },
-            description: "TV episode listing scheme. Broadcast matches canonical TV airings (default across providers). Alternate switches to DVD/digital production order.",
-        },
-        SettingMatch {
-            category: SettingsCategory::General,
-            category_idx: 0,
-            item_idx: 3,
             label: "Player Engine",
             value_str: "mpv (External High-Performance Player)".to_string(),
             description: "Hardware-accelerated player engine powering video playback and subtitle sync.",
@@ -907,7 +896,7 @@ pub fn get_all_settings_metadata(cfg: &Config) -> Vec<SettingMatch> {
         SettingMatch {
             category: SettingsCategory::General,
             category_idx: 0,
-            item_idx: 4,
+            item_idx: 3,
             label: "TMDB Metadata API",
             value_str: "Connected (v3 API Active)".to_string(),
             description: "Global metadata provider supplying artwork, cast details, episode titles, and summaries.",
@@ -1211,7 +1200,7 @@ impl SetupStep {
             SetupStep::Welcome => "Welcome to KittyMov & Quick Setup",
             SetupStep::Playback => "Video player engine & hardware GPU acceleration",
             SetupStep::Subtitles => "Voice audio tracks, dubbing, and subtitle languages",
-            SetupStep::Providers => "Streaming server prioritization and TV episode order",
+            SetupStep::Providers => "Streaming server prioritization and subtitle preferences",
             SetupStep::Appearance => "Color themes and terminal poster cover art",
             SetupStep::Complete => "Setup overview and essential keyboard shortcuts",
         }
@@ -1222,7 +1211,7 @@ impl SetupStep {
             SetupStep::Welcome => 2,
             SetupStep::Playback => 4,
             SetupStep::Subtitles => 5,
-            SetupStep::Providers => 4,
+            SetupStep::Providers => 3,
             SetupStep::Appearance => 4,
             SetupStep::Complete => 2,
         }
@@ -1694,11 +1683,19 @@ impl App {
         }
     }
 
+    pub fn provider_episode_order(preferred_provider: &str) -> &'static str {
+        match preferred_provider.to_lowercase().as_str() {
+            "vixsrc" | "vixsrc_only" => "streaming",
+            _ => "broadcast",
+        }
+    }
+
     pub async fn open_episode_modal(&mut self, item: MediaItem) {
         self.status_message = format!("Loading seasons for {}...", item.title);
+        let order = Self::provider_episode_order(&self.cfg.preferred_provider);
         if let Ok((_details, seasons, stream_episodes_map)) = self
             .tmdb
-            .get_tv_details_with_order(item.tmdb_id, &self.cfg.episode_order)
+            .get_tv_details_with_order(item.tmdb_id, order)
             .await
         {
             let first_season = seasons.first().map(|s| s.season_number).unwrap_or(1);
@@ -1725,6 +1722,50 @@ impl App {
         }
     }
 
+    pub async fn refresh_episode_modal(&mut self) {
+        if let Some(ref modal) = self.episode_modal {
+            let item = modal.series.clone();
+            let curr_s_idx = modal.selected_season_idx;
+            let curr_ep_idx = modal.selected_episode_idx;
+            let order = Self::provider_episode_order(&self.cfg.preferred_provider);
+
+            if let Ok((_details, seasons, stream_episodes_map)) = self
+                .tmdb
+                .get_tv_details_with_order(item.tmdb_id, order)
+                .await
+            {
+                let s_idx = if curr_s_idx < seasons.len() {
+                    curr_s_idx
+                } else {
+                    0
+                };
+                let season_num = seasons.get(s_idx).map(|s| s.season_number).unwrap_or(1);
+                let episodes = if let Some(ref map) = stream_episodes_map {
+                    map.get(&season_num).cloned().unwrap_or_default()
+                } else {
+                    self.tmdb
+                        .get_season_episodes(item.tmdb_id, season_num)
+                        .await
+                        .unwrap_or_default()
+                };
+                let ep_idx = if curr_ep_idx < episodes.len() {
+                    curr_ep_idx
+                } else {
+                    0
+                };
+
+                self.episode_modal = Some(EpisodeModalState {
+                    series: item,
+                    seasons,
+                    selected_season_idx: s_idx,
+                    episodes,
+                    selected_episode_idx: ep_idx,
+                    all_season_episodes: stream_episodes_map,
+                });
+            }
+        }
+    }
+
     pub fn cycle_subtitle_source(&mut self) {
         let sources = ["auto", "provider", "wyzie", "both"];
         self.cfg.subtitle_source = cycle_list(&sources, &self.cfg.subtitle_source, true);
@@ -1738,36 +1779,25 @@ impl App {
         self.status_message = format!("Subtitle Source: {}", label);
     }
 
-    pub async fn toggle_episode_order(&mut self) {
-        if self.cfg.episode_order.to_lowercase() == "streaming" {
-            self.cfg.episode_order = "broadcast".to_string();
-            self.status_message = "Episode Order: Broadcast (Canonical • Recommended)".to_string();
-        } else {
-            self.cfg.episode_order = "streaming".to_string();
-            self.status_message =
-                "Episode Order: Alternate / Production (Digital Groups)".to_string();
-        }
+    pub async fn cycle_preferred_provider(&mut self, forward: bool) {
+        let providers = ["auto", "vidlink", "vixsrc", "hianime", "lookmovie"];
+        self.cfg.preferred_provider =
+            cycle_list(&providers, &self.cfg.preferred_provider, forward);
         let _ = self.cfg.save();
+        self.providers = Arc::new(ProviderManager::with_preference(
+            &self.cfg.preferred_provider,
+        ));
+        let label = match self.cfg.preferred_provider.to_lowercase().as_str() {
+            "vidlink" => "VidLink First (HD 1080p Direct)",
+            "vixsrc" => "VixSrc First (Ultra-Fast 1080p CDN)",
+            "hianime" => "HiAnime First (Dedicated Anime 1080p CDN)",
+            "lookmovie" => "LookMovie First (Backup CDN)",
+            _ => "Auto Fallback (VidLink → VixSrc → HiAnime → LookMovie)",
+        };
+        self.status_message = format!("Primary Provider: {} (Updated episode guide)", label);
 
-        if let Some(ref modal) = self.episode_modal {
-            let item = modal.series.clone();
-            let curr_s_idx = modal.selected_season_idx;
-            self.open_episode_modal(item).await;
-            if let Some(ref mut new_modal) = self.episode_modal {
-                if curr_s_idx < new_modal.seasons.len() {
-                    new_modal.selected_season_idx = curr_s_idx;
-                    let season_num = new_modal.seasons[curr_s_idx].season_number;
-                    if let Some(ref map) = new_modal.all_season_episodes {
-                        new_modal.episodes = map.get(&season_num).cloned().unwrap_or_default();
-                    } else if let Ok(eps) = self
-                        .tmdb
-                        .get_season_episodes(new_modal.series.tmdb_id, season_num)
-                        .await
-                    {
-                        new_modal.episodes = eps;
-                    }
-                }
-            }
+        if self.episode_modal.is_some() {
+            self.refresh_episode_modal().await;
         }
     }
 
@@ -1911,11 +1941,6 @@ impl App {
                     }
                     1 => {
                         self.cfg.resume_on_startup = !self.cfg.resume_on_startup;
-                    }
-                    2 => {
-                        let orders = ["broadcast", "streaming"];
-                        self.cfg.episode_order =
-                            cycle_list(&orders, &self.cfg.episode_order, forward);
                     }
                     _ => {}
                 },
@@ -2087,7 +2112,6 @@ impl App {
                 SettingsCategory::General => {
                     self.cfg.default_tab = "movies".to_string();
                     self.cfg.resume_on_startup = false;
-                    self.cfg.episode_order = "broadcast".to_string();
                 }
                 SettingsCategory::Playback => {
                     self.cfg.audio_mode = "sub".to_string();
@@ -2211,15 +2235,11 @@ impl App {
                         cycle_list(&provs, &self.cfg.preferred_provider, forward);
                 }
                 1 => {
-                    let orders = ["broadcast", "streaming"];
-                    self.cfg.episode_order = cycle_list(&orders, &self.cfg.episode_order, forward);
-                }
-                2 => {
                     let sources = ["auto", "provider", "wyzie"];
                     self.cfg.subtitle_source =
                         cycle_list(&sources, &self.cfg.subtitle_source, forward);
                 }
-                3 => {
+                2 => {
                     if forward {
                         self.setup_wizard_next_step();
                     } else {
@@ -2290,7 +2310,7 @@ impl App {
                 }
             }
             SetupStep::Providers => {
-                if item_idx == 3 {
+                if item_idx == 2 {
                     self.setup_wizard_next_step();
                 } else {
                     self.setup_wizard_change_value(true);
@@ -2738,35 +2758,72 @@ impl App {
             let mut mapped_req = req_clone.clone();
             if mapped_req.media_type == "tv" {
                 if let (Some(s), Some(e)) = (mapped_req.season, mapped_req.episode) {
-                    if (provider_choice == "vixsrc" || provider_choice == "auto")
-                        && cfg.episode_order.to_lowercase() == "broadcast"
-                    {
-                        if let Ok((_info, _seasons, Some(stream_map))) = tmdb
-                            .get_tv_details_with_order(mapped_req.tmdb_id, "streaming")
-                            .await
-                        {
-                            if let Ok(canon_eps) =
-                                tmdb.get_season_episodes(mapped_req.tmdb_id, s).await
+                    let primary_order = App::provider_episode_order(&cfg.preferred_provider);
+                    let target_order = App::provider_episode_order(&provider_choice);
+
+                    if primary_order != target_order {
+                        if target_order == "streaming" {
+                            if let Ok((_info, _seasons, Some(stream_map))) = tmdb
+                                .get_tv_details_with_order(mapped_req.tmdb_id, "streaming")
+                                .await
                             {
-                                if let Some(target_canon_ep) =
-                                    canon_eps.iter().find(|x| x.episode_number == e)
+                                if let Ok(canon_eps) =
+                                    tmdb.get_season_episodes(mapped_req.tmdb_id, s).await
                                 {
-                                    let target_name = target_canon_ep.name.trim().to_lowercase();
-                                    let mut found = None;
-                                    for (stream_s, eps) in &stream_map {
-                                        for stream_ep in eps {
-                                            if stream_ep.name.trim().to_lowercase() == target_name {
-                                                found = Some((*stream_s, stream_ep.episode_number));
+                                    if let Some(target_canon_ep) =
+                                        canon_eps.iter().find(|x| x.episode_number == e)
+                                    {
+                                        let target_name = target_canon_ep.name.trim().to_lowercase();
+                                        let mut found = None;
+                                        for (stream_s, eps) in &stream_map {
+                                            for stream_ep in eps {
+                                                if stream_ep.name.trim().to_lowercase() == target_name {
+                                                    found = Some((*stream_s, stream_ep.episode_number));
+                                                    break;
+                                                }
+                                            }
+                                            if found.is_some() {
                                                 break;
                                             }
                                         }
-                                        if found.is_some() {
-                                            break;
+                                        if let Some((s_m, e_m)) = found {
+                                            mapped_req.season = Some(s_m);
+                                            mapped_req.episode = Some(e_m);
                                         }
                                     }
-                                    if let Some((s_m, e_m)) = found {
-                                        mapped_req.season = Some(s_m);
-                                        mapped_req.episode = Some(e_m);
+                                }
+                            }
+                        } else if let Ok((_info, _seasons, Some(stream_map))) = tmdb
+                            .get_tv_details_with_order(mapped_req.tmdb_id, "streaming")
+                            .await
+                        {
+                            if let Some(stream_eps) = stream_map.get(&s) {
+                                if let Some(target_stream_ep) =
+                                    stream_eps.iter().find(|x| x.episode_number == e)
+                                {
+                                    let target_name = target_stream_ep.name.trim().to_lowercase();
+                                    if let Ok((_canon_info, canon_seasons, _)) = tmdb
+                                        .get_tv_details_with_order(mapped_req.tmdb_id, "broadcast")
+                                        .await
+                                    {
+                                        let mut found = None;
+                                        for cs in &canon_seasons {
+                                            if let Ok(canon_eps) = tmdb.get_season_episodes(mapped_req.tmdb_id, cs.season_number).await {
+                                                for cep in canon_eps {
+                                                    if cep.name.trim().to_lowercase() == target_name {
+                                                        found = Some((cs.season_number, cep.episode_number));
+                                                        break;
+                                                    }
+                                                }
+                                                if found.is_some() {
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        if let Some((s_m, e_m)) = found {
+                                            mapped_req.season = Some(s_m);
+                                            mapped_req.episode = Some(e_m);
+                                        }
                                     }
                                 }
                             }
@@ -3909,7 +3966,7 @@ mod tests {
     #[test]
     fn test_settings_categories_and_counts() {
         assert_eq!(SettingsCategory::ALL.len(), 5);
-        assert_eq!(SettingsCategory::General.item_count(), 5);
+        assert_eq!(SettingsCategory::General.item_count(), 4);
         assert_eq!(SettingsCategory::Playback.item_count(), 8);
         assert_eq!(SettingsCategory::Providers.item_count(), 5);
         assert_eq!(SettingsCategory::Appearance.item_count(), 3);
@@ -3983,11 +4040,6 @@ mod tests {
         assert!(!app.cfg.resume_on_startup);
         app.settings_change_value(true);
         assert!(app.cfg.resume_on_startup);
-
-        app.settings_modal.as_mut().unwrap().item_idx = 2; // TV Episode Order
-        assert_eq!(app.cfg.episode_order, "broadcast");
-        app.settings_change_value(true);
-        assert_eq!(app.cfg.episode_order, "streaming");
 
         // Playback Category (category_idx = 1)
         app.settings_modal.as_mut().unwrap().category_idx = 1;
@@ -4252,20 +4304,31 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_broadcast_order_default_and_toggle() {
+    async fn test_primary_provider_updates_episode_list_order() {
         let cfg = Config::default();
         let db = Database::in_memory().unwrap();
         let mut app = App::new(cfg, db);
 
-        assert_eq!(app.cfg.episode_order, "broadcast");
+        // Verify provider episode order mappings
+        assert_eq!(App::provider_episode_order("auto"), "broadcast");
+        assert_eq!(App::provider_episode_order("vidlink"), "broadcast");
+        assert_eq!(App::provider_episode_order("vixsrc"), "streaming");
+        assert_eq!(App::provider_episode_order("lookmovie"), "broadcast");
+        assert_eq!(App::provider_episode_order("hianime"), "broadcast");
 
-        app.toggle_episode_order().await;
-        assert_eq!(app.cfg.episode_order, "streaming");
-        assert!(app.status_message.contains("Alternate / Production"));
+        assert_eq!(app.cfg.preferred_provider, "auto");
 
-        app.toggle_episode_order().await;
-        assert_eq!(app.cfg.episode_order, "broadcast");
-        assert!(app.status_message.contains("Broadcast"));
+        // Cycle to vidlink
+        app.cycle_preferred_provider(true).await;
+        assert_eq!(app.cfg.preferred_provider, "vidlink");
+        assert_eq!(App::provider_episode_order(&app.cfg.preferred_provider), "broadcast");
+        assert!(app.status_message.contains("VidLink"));
+
+        // Cycle to vixsrc
+        app.cycle_preferred_provider(true).await;
+        assert_eq!(app.cfg.preferred_provider, "vixsrc");
+        assert_eq!(App::provider_episode_order(&app.cfg.preferred_provider), "streaming");
+        assert!(app.status_message.contains("VixSrc"));
     }
 
     #[tokio::test]
